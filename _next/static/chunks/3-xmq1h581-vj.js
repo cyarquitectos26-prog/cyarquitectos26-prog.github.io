@@ -1,0 +1,1 @@
+(globalThis.TURBOPACK||(globalThis.TURBOPACK=[])).push(["object"==typeof document?document.currentScript:void 0,99023,t=>{"use strict";let e=(0,t.i(75254).default)("Minus",[["path",{d:"M5 12h14",key:"1ays0h"}]]);t.s(["Minus",0,e],99023)}]);
