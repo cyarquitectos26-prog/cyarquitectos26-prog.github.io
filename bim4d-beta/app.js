@@ -9,7 +9,7 @@ THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
 const $ = (id) => document.getElementById(id);
-const V = 'b6';
+const V = 'b7';
 const params = new URLSearchParams(location.search);
 const fmt = new Intl.NumberFormat('es-PE', { maximumFractionDigits: 2 });
 const fmtInt = new Intl.NumberFormat('es-PE');
@@ -400,9 +400,11 @@ function triToElem(D, tri) {
   while (lo < hi) { const m = (lo + hi + 1) >> 1; if (a[m] <= tri) lo = m; else hi = m - 1; }
   return D.elems[lo];
 }
+function ensureBVH(D) { if (!D.pick.geometry.boundsTree) D.pick.geometry.computeBoundsTree({ maxLeafTris: 12, indirect: true }); }
 export function pickAt(ndc, cam = activeCam, rayOverride = null) {
+  for (const D of S.disc.values()) if (D.visible) ensureBVH(D);
   if (rayOverride) ray.set(rayOverride.origin, rayOverride.direction); else ray.setFromCamera(ndc, cam);
-  const picks = [...S.disc.values()].filter((D) => D.visible && D.pick.geometry.boundsTree).map((D) => D.pick);
+  const picks = [...S.disc.values()].filter((D) => D.visible).map((D) => D.pick);
   const hits = ray.intersectObjects(picks, false);
   let ghost = null;
   for (const h of hits) {
@@ -493,14 +495,76 @@ function renderInfo() {
     + '<p class="method">Vínculo: ' + esc(METHODS[e.m4d] || e.m4d) + '</p></section>'
     + '<section class="sec"><h2>Propiedades</h2><dl class="kv">' + rows.map((r) => '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>').join('') + '</dl>'
     + (drrp.length ? '<h2 style="margin-top:12px">Control de obra (DRRP)</h2><dl class="kv">' + drrp.map((r) => '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>').join('') + '</dl>' : '')
-    + '<p class="small muted" style="word-break:break-all">UniqueId: ' + esc(e.uid) + '</p></section>';
+    + '<p class="small muted" style="word-break:break-all">UniqueId: ' + esc(e.uid) + '</p></section>'
+    + '<section class="sec"><h2>Observaciones de obra <button class="ghost small" id="b-obs-exp">Exportar CSV</button></h2><div id="obs-box"></div></section>';
   $('b-iso').onclick = () => { S.isolate = new Set([e.uid]); refresh(); tip('Elemento aislado. «Mostrar todo» restablece la vista.'); };
   $('b-hide').onclick = () => { S.hidden.add(e.uid); select(null); };
   $('b-fly').onclick = () => select(e, true);
   $('b-showall').onclick = showAll;
+  $('b-obs-exp').onclick = exportObs;
+  renderObs(e);
 }
 function showAll() { S.hidden.clear(); S.isolate = null; S.taskSel = null; document.querySelectorAll('.act.sel').forEach((x) => x.classList.remove('sel')); refresh(); }
 S.showAll = showAll;
+
+
+// ------------------------------------------------------------------ observaciones de campo (se guardan en este equipo)
+const OBS = {
+  db: null,
+  open() {
+    if (this.db) return Promise.resolve(this.db);
+    return new Promise((res, rej) => {
+      const r = indexedDB.open('bim4d-obs', 1);
+      r.onupgradeneeded = () => { const os = r.result.createObjectStore('obs', { keyPath: 'id' }); os.createIndex('uid', 'uid'); };
+      r.onsuccess = () => { this.db = r.result; res(this.db); }; r.onerror = () => rej(r.error);
+    });
+  },
+  async all() { const db = await this.open(); return new Promise((res) => { const q = db.transaction('obs').objectStore('obs').getAll(); q.onsuccess = () => res(q.result || []); q.onerror = () => res([]); }); },
+  async of(uid) { return (await this.all()).filter((o) => o.uid === uid).sort((a, b) => (a.at < b.at ? 1 : -1)); },
+  async put(o) { const db = await this.open(); return new Promise((res) => { const t = db.transaction('obs', 'readwrite'); t.objectStore('obs').put(o); t.oncomplete = () => res(); }); },
+  async del(id) { const db = await this.open(); return new Promise((res) => { const t = db.transaction('obs', 'readwrite'); t.objectStore('obs').delete(id); t.oncomplete = () => res(); }); },
+};
+S.obs = OBS;
+async function renderObs(e) {
+  const box = $('obs-box'); if (!box) return;
+  let list = [];
+  try { list = await OBS.of(e.uid); } catch { box.innerHTML = '<p class="small muted">Este navegador no permite guardar observaciones.</p>'; return; }
+  box.innerHTML = (list.length ? list.map((o) => '<div class="lk"><div class="ph">' + esc(o.status) + ' · ' + esc(o.at.slice(0, 16).replace('T', ' ')) + '</div><div class="nm">' + esc(o.text) + '</div>'
+      + '<div class="dt">' + esc(o.who || '') + (o.task ? ' · ' + esc(taskName(o.task)) : '') + '</div>' + (o.photo ? '<img src="' + o.photo + '" alt="Foto" style="max-width:100%;border-radius:6px;margin-top:6px">' : '')
+      + '<div class="btns" style="margin:6px 0 0"><button class="ghost small" data-del="' + o.id + '">Eliminar</button></div></div>').join('') : '<p class="small muted">Sin observaciones para este elemento.</p>')
+    + '<details style="margin-top:8px"><summary class="small" style="cursor:pointer;font-weight:650">+ Nueva observación</summary>'
+    + '<label class="field"><span>Observación</span><textarea id="o-text" rows="3" style="width:100%;background:var(--panel-2);color:var(--ink);border:1px solid var(--line-2);border-radius:7px;padding:6px"></textarea></label>'
+    + '<label class="field"><span>Responsable</span><input id="o-who" type="text"></label>'
+    + '<label class="field"><span>Estado</span><select id="o-status"><option>Pendiente</option><option>En revisión</option><option>Cerrada</option></select></label>'
+    + '<label class="field"><span>Actividad</span><select id="o-task"><option value="">Sin actividad</option>' + e.links.map((l) => '<option value="' + l.t + '">' + esc(taskName(l.t)) + '</option>').join('') + '</select></label>'
+    + '<label class="field"><span>Foto</span><input id="o-photo" type="file" accept="image/*" capture="environment"></label>'
+    + '<button class="primary" id="o-save">Guardar observación</button></details>';
+  box.querySelectorAll('[data-del]').forEach((b) => b.onclick = async () => { await OBS.del(b.dataset.del); renderObs(e); });
+  $('o-save').onclick = async () => {
+    const text = $('o-text').value.trim(); if (!text) { tip('Escribe la observación.'); return; }
+    let photo = null; const f = $('o-photo').files[0];
+    if (f) photo = await shrinkPhoto(f);
+    await OBS.put({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), uid: e.uid, elementId: e.id, disc: e.D.d, cat: e.cat, fam: e.fam, type: e.type,
+      text, who: $('o-who').value.trim(), status: $('o-status').value, task: $('o-task').value ? +$('o-task').value : null, photo, at: new Date().toISOString(), cut: S.cut });
+    tip('Observación guardada en este equipo.'); renderObs(e);
+  };
+}
+function shrinkPhoto(file) {
+  return new Promise((res) => {
+    const img = new Image(); const url = URL.createObjectURL(file);
+    img.onload = () => { const k = Math.min(1, 1280 / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = img.width * k; c.height = img.height * k;
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg', 0.8)); };
+    img.onerror = () => res(null); img.src = url;
+  });
+}
+async function exportObs() {
+  const list = await OBS.all();
+  if (!list.length) { tip('Aún no hay observaciones registradas en este equipo.'); return; }
+  const head = ['Fecha', 'Estado', 'Observación', 'Responsable', 'Especialidad', 'Categoría', 'Familia', 'Tipo', 'ID Revit', 'UniqueId', 'Actividad', 'Fecha de corte', 'Con foto'];
+  const rows = list.map((o) => [o.at, o.status, o.text, o.who, o.disc, o.cat, o.fam, o.type, o.elementId, o.uid, o.task ? taskName(o.task) : '', o.cut, o.photo ? 'Sí' : 'No']);
+  const csv = '﻿' + [head, ...rows].map((r) => r.map((v) => '"' + String(v ?? '').replace(/"/g, '""') + '"').join(';')).join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'observaciones_piso18_' + S.cut + '.csv'; a.click();
+}
 
 // ------------------------------------------------------------------ línea de tiempo
 let t0, t1, playing = null;
@@ -730,7 +794,7 @@ async function main() {
       + fmtInt.format(S.elems.length) + ' elementos, todos con fecha o marcados como existentes.';
     // tareas pesadas en segundo plano: BVH para selección y aristas
     const idle = window.requestIdleCallback || ((f) => setTimeout(f, 60));
-    for (const D of S.disc.values()) idle(() => { D.pick.geometry.computeBoundsTree({ maxLeafTris: 12, indirect: true }); invalidate(); });
+    if (!matchMedia('(pointer:coarse)').matches) for (const D of S.disc.values()) idle(() => { ensureBVH(D); invalidate(); });
     idle(() => { for (const D of S.disc.values()) if (D.d !== 'DATA') buildEdges(D); refresh(); });
     emit('ready');
     if (params.get('modo') === 'ar') openAR();
