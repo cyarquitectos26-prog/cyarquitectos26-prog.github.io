@@ -1,1047 +1,531 @@
-/* ar.js · Realidad aumentada en obra para el visor BIM 4D
-   Android (Chrome + ARCore): WebXR con deteccion de piso, escala 1:1 fija, alineacion por dos
-   puntos A-B (como el marcador del video), arrastre y giro con los dedos, transparencia, corte y 4D.
-   iPhone/iPad: exporta lo visible a USDZ y lo abre en AR Quick Look con escala fija 1:1.
-   Se carga ANTES del bundle del visor para enlazarse con su renderer de three.js. */
+// AR en obra: WebXR (Android/ARCore) con colocación por geolocalización + brújula, ajuste fino y controles;
+// iPhone/iPad: AR Quick Look (USDZ generado con lo que se ve, escala fija 1:1).
+import { anchorOf, latLonToENU, enuToLatLon, earthUrl } from './geo.js?v=2.0.0';
+import { STATES } from './app.js?v=2.0.0';
 
-const AR = { session: null };
-const ctx = { renderer: null, scene: null, camera: null, loop: null };
-
-(function hookThree() {
-  let hub = window.__THREE_DEVTOOLS__;
-  if (!hub) { hub = new EventTarget(); window.__THREE_DEVTOOLS__ = hub; }
-  hub.addEventListener('observe', function (e) {
-    const o = e.detail;
-    if (!o || !o.isWebGLRenderer || ctx.renderer) return;
-    ctx.renderer = o;
-    const setLoop = o.setAnimationLoop.bind(o);
-    o.setAnimationLoop = function (cb) { ctx.loop = cb; setLoop(cb ? master : null); };
-    const render = o.render.bind(o);
-    o.render = function (scene, camera) {
-      if (!AR.session && scene && scene.isScene) { ctx.scene = scene; ctx.camera = camera; }
-      return render(scene, camera);
-    };
-  });
-  function master(time, frame) {
-    if (AR.session && frame) {
-      try { arFrame(time, frame); } catch (err) { console.error('[AR]', err); }
-      return;
-    }
-    if (ctx.loop) ctx.loop(time, frame);
-  }
-})();
-
-/* ---------- utilidades ---------- */
 const $ = (id) => document.getElementById(id);
-const T3 = {};
-const refs = { A: null, B: null };
+const rad = (d) => d * Math.PI / 180, deg = (r) => r * 180 / Math.PI;
+const wrapPi = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const quickLook = (function () { const a = document.createElement('a'); return !!(a.relList && a.relList.supports && a.relList.supports('ar')); })();
-const params = new URLSearchParams(location.search);
-const COLORS = { A: 0xff3b30, B: 0x0a84ff, white: 0xffffff };
-let xrSupport = null;
+const quickLook = (() => { const a = document.createElement('a'); return !!(a.relList && a.relList.supports && a.relList.supports('ar')); })();
+let S, THREE;
+let xrOk = null;
 
-function isModelMesh(m) {
-  return !!(m && m.isMesh && m.geometry && m.geometry.index && m.geometry.attributes && m.geometry.attributes.color);
-}
-function sceneParts() {
-  const s = ctx.scene;
-  if (!s) return null;
-  let grid = null, group = null, ring = null;
-  for (const c of s.children) {
-    if (c.type === 'GridHelper') grid = c;
-    else if (c.isMesh && c.geometry && c.geometry.type === 'RingGeometry' && !c.userData.arx) ring = c;
-    else if (c.isGroup && !group && c.children.some(isModelMesh)) group = c;
-  }
-  return { grid: grid, group: group, ring: ring };
-}
-function ctors() {
-  if (T3.Vector3) return T3;
-  const p = sceneParts();
-  if (!p || !p.ring || !p.grid || !ctx.camera) return null;
-  T3.Vector3 = ctx.scene.position.constructor;
-  T3.Matrix4 = ctx.scene.matrix.constructor;
-  T3.Object3D = Object.getPrototypeOf(ctx.scene.constructor.prototype).constructor;
-  T3.Mesh = p.ring.constructor;
-  T3.RingGeometry = p.ring.geometry.constructor;
-  T3.BasicMaterial = p.ring.material.constructor;
-  T3.BufferGeometry = Object.getPrototypeOf(p.ring.geometry.constructor.prototype).constructor;
-  T3.LineSegments = Object.getPrototypeOf(p.grid.constructor.prototype).constructor;
-  T3.LineMaterial = p.grid.material.constructor;
-  T3.Float32Attr = p.grid.geometry.attributes.position.constructor;
-  T3.Camera = ctx.camera.constructor;
-  return T3;
-}
-function floorY() { const p = sceneParts(); return p && p.grid ? p.grid.position.y + 0.1 : 0; }
-function modelCenter() { const p = sceneParts(); return p && p.grid ? { x: p.grid.position.x, z: p.grid.position.z } : { x: 0, z: 0 }; }
-function modelReady() { const p = sceneParts(); return !!(p && p.group && p.grid && p.ring && ctx.camera && ctx.renderer); }
-function redraw() {
-  if (AR.session || !ctx.renderer || !ctx.scene || !ctx.camera) return;
-  requestAnimationFrame(function () { try { ctx.renderer.render(ctx.scene, ctx.camera); } catch (e) { /* sin efecto */ } });
-}
-function fmtCm(m) { return Math.round(m * 100) + ' cm'; }
-function fmtInt(n) { return new Intl.NumberFormat('es-PE').format(n); }
-function fmtDate(v) { if (!v) return ''; const p = v.split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : v; }
-function round3(v) { return Math.round(v * 1000) / 1000; }
-function poke(id, prop, value, types) {
-  const el = $(id);
-  if (!el) return;
-  el[prop] = value;
-  for (const t of types) el.dispatchEvent(new Event(t, { bubbles: true }));
-}
-function checkXR() {
-  if (!xrSupport) {
-    xrSupport = navigator.xr && navigator.xr.isSessionSupported
-      ? navigator.xr.isSessionSupported('immersive-ar').catch(function () { return false; })
-      : Promise.resolve(false);
-  }
-  return xrSupport;
-}
-
-/* ---------- puntos de referencia A y B ---------- */
-function refKey() {
-  const code = ($('project-code') && $('project-code').textContent) || 'proyecto';
-  const lv = ($('level') && $('level').value) || '';
-  return 'bim4d.ar.ref.' + code + '.' + lv;
-}
-function loadRefs() {
-  refs.A = null; refs.B = null;
-  try {
-    const v = JSON.parse(localStorage.getItem(refKey()) || 'null');
-    if (v && v.A && v.B) { refs.A = v.A; refs.B = v.B; }
-  } catch (e) { /* almacenamiento no disponible */ }
-  updateMarkers();
-  renderRefs();
-}
-function saveRefs() {
-  try {
-    if (refs.A && refs.B) localStorage.setItem(refKey(), JSON.stringify({ A: refs.A, B: refs.B }));
-    else localStorage.removeItem(refKey());
-  } catch (e) { /* almacenamiento no disponible */ }
-}
-function parsePair(s) {
-  if (!s) return null;
-  const p = s.split(',').map(Number);
-  return p.length === 2 && p.every(Number.isFinite) ? { x: p[0], z: p[1] } : null;
-}
-
-let markerRoot = null;
-const markers = {};
-function makeMarker(color, size) {
-  const t = ctors();
-  const g = new t.Object3D();
-  const mat = new t.BasicMaterial({ color: color, side: 2, depthTest: false, transparent: true, opacity: 0.95 });
-  const ring = new t.Mesh(new t.RingGeometry(0.16 * size, 0.24 * size, 40).rotateX(-Math.PI / 2), mat);
-  const dot = new t.Mesh(new t.RingGeometry(0, 0.045 * size, 20).rotateX(-Math.PI / 2), mat);
-  const lg = new t.BufferGeometry();
-  lg.setAttribute('position', new t.Float32Attr([0, 0, 0, 0, 2.6, 0], 3));
-  const pole = new t.LineSegments(lg, new t.LineMaterial({ color: color, depthTest: false, transparent: true }));
-  ring.renderOrder = dot.renderOrder = pole.renderOrder = 30;
-  ring.userData.arx = dot.userData.arx = true;
-  g.add(ring, dot, pole);
-  return g;
-}
-function updateMarkers() {
-  const t = ctors();
-  if (!t) return;
-  if (!markerRoot) {
-    markerRoot = new t.Object3D();
-    markerRoot.visible = false;
-    markers.A = makeMarker(COLORS.A, 1);
-    markers.B = makeMarker(COLORS.B, 1);
-    markerRoot.add(markers.A, markers.B);
-  }
-  if (markerRoot.parent !== ctx.scene) ctx.scene.add(markerRoot);
-  const f = floorY();
-  for (const k of ['A', 'B']) {
-    markers[k].visible = !!refs[k];
-    if (refs[k]) markers[k].position.set(refs[k].x, f + 0.01, refs[k].z);
-  }
-  redraw();
-}
-function showRefMarkers(on) {
-  updateMarkers();
-  if (markerRoot) { markerRoot.visible = on; redraw(); }
-}
-
-/* ---------- seleccion de puntos en el modelo 3D ---------- */
-const pick = { step: null, down: null };
-function raycastModel(cx, cy) {
-  const t = ctors();
-  const parts = sceneParts();
-  if (!t || !parts || !parts.group) return null;
-  const cam = ctx.camera;
-  const rect = ctx.renderer.domElement.getBoundingClientRect();
-  const nx = (cx - rect.left) / rect.width * 2 - 1;
-  const ny = 1 - (cy - rect.top) / rect.height * 2;
-  cam.updateMatrixWorld();
-  const o = new t.Vector3().setFromMatrixPosition(cam.matrixWorld);
-  const d = new t.Vector3(nx, ny, 0.5).unproject(cam).sub(o).normalize();
-  const inv = new t.Matrix4();
-  const lo = new t.Vector3(), ld = new t.Vector3(), hp = new t.Vector3();
-  let best = Infinity, out = null;
-  for (const mesh of parts.group.children) {
-    if (!isModelMesh(mesh) || !mesh.visible) continue;
-    const g = mesh.geometry, idx = g.index.array, pos = g.attributes.position.array;
-    const n = Math.min(g.drawRange.count, idx.length);
-    mesh.updateMatrixWorld();
-    inv.copy(mesh.matrixWorld).invert();
-    lo.copy(o).applyMatrix4(inv);
-    ld.copy(d).transformDirection(inv);
-    const ox = lo.x, oy = lo.y, oz = lo.z, dx = ld.x, dy = ld.y, dz = ld.z;
-    const planes = mesh.material.clippingPlanes || [];
-    for (let i = 0; i + 2 < n; i += 3) {
-      const a = idx[i] * 3, b = idx[i + 1] * 3, c = idx[i + 2] * 3;
-      const e1x = pos[b] - pos[a], e1y = pos[b + 1] - pos[a + 1], e1z = pos[b + 2] - pos[a + 2];
-      const e2x = pos[c] - pos[a], e2y = pos[c + 1] - pos[a + 1], e2z = pos[c + 2] - pos[a + 2];
-      const px = dy * e2z - dz * e2y, py = dz * e2x - dx * e2z, pz = dx * e2y - dy * e2x;
-      const det = e1x * px + e1y * py + e1z * pz;
-      if (det > -1e-12 && det < 1e-12) continue;
-      const id = 1 / det;
-      const tx = ox - pos[a], ty = oy - pos[a + 1], tz = oz - pos[a + 2];
-      const u = (tx * px + ty * py + tz * pz) * id;
-      if (u < 0 || u > 1) continue;
-      const qx = ty * e1z - tz * e1y, qy = tz * e1x - tx * e1z, qz = tx * e1y - ty * e1x;
-      const v = (dx * qx + dy * qy + dz * qz) * id;
-      if (v < 0 || u + v > 1) continue;
-      const dist = (e2x * qx + e2y * qy + e2z * qz) * id;
-      if (dist <= 0.01 || dist >= best) continue;
-      hp.set(ox + dx * dist, oy + dy * dist, oz + dz * dist).applyMatrix4(mesh.matrixWorld);
-      if (planes.some(function (pl) { return pl.distanceToPoint(hp) < 0; })) continue;
-      best = dist;
-      out = { x: hp.x, y: hp.y, z: hp.z };
-    }
-  }
-  return out;
-}
-function banner(text, showCancel) {
-  let b = $('arx-banner');
-  if (!b) {
-    b = document.createElement('div');
-    b.id = 'arx-banner';
-    b.innerHTML = '<span id="arx-banner-text"></span><button id="arx-banner-cancel" type="button">Cancelar</button>';
-    document.body.appendChild(b);
-    $('arx-banner-cancel').addEventListener('click', function () { stopPicking(true); });
-  }
-  if (text === null) { b.hidden = true; return; }
-  b.hidden = false;
-  $('arx-banner-text').textContent = text;
-  $('arx-banner-cancel').hidden = !showCancel;
-}
-function startPicking() {
-  const dlg = $('arx-dialog');
-  if (dlg.open) dlg.close();
-  pick.step = 'A';
-  pick.prev = { A: refs.A, B: refs.B };
-  refs.A = null; refs.B = null;
-  showRefMarkers(true);
-  banner('Toca en el modelo el punto A (rojo): p. ej. la esquina de una columna o un cruce de ejes que exista en obra.', true);
-}
-function stopPicking(cancelled) {
-  if (cancelled && pick.prev) { refs.A = pick.prev.A; refs.B = pick.prev.B; }
-  pick.step = null; pick.prev = null;
-  banner(null);
-  updateMarkers();
-  openDialog();
-}
-window.addEventListener('pointerdown', function (e) {
-  if (pick.step && ctx.renderer && e.target === ctx.renderer.domElement) pick.down = [e.clientX, e.clientY];
-}, true);
-window.addEventListener('pointerup', function (e) {
-  if (!pick.step || !ctx.renderer || e.target !== ctx.renderer.domElement) return;
-  const d = pick.down;
-  pick.down = null;
-  if (!d || Math.hypot(e.clientX - d[0], e.clientY - d[1]) > 6) return;
-  e.stopPropagation();
-  e.preventDefault();
-  const p = raycastModel(e.clientX, e.clientY);
-  if (!p) { banner('Ahí no hay ningún elemento. Toca una columna, muro o losa visible (punto ' + pick.step + ').', true); return; }
-  refs[pick.step] = { x: round3(p.x), z: round3(p.z) };
-  updateMarkers();
-  if (pick.step === 'A') {
-    pick.step = 'B';
-    banner('Ahora toca el punto B (azul), lo más lejos posible de A (idealmente más de 5 m).', true);
-    return;
-  }
-  const dist = Math.hypot(refs.A.x - refs.B.x, refs.A.z - refs.B.z);
-  if (dist < 1) {
-    refs.B = null;
-    updateMarkers();
-    banner('B está a ' + fmtCm(dist) + ' de A. Elige un punto B más alejado.', true);
-    return;
-  }
-  pick.prev = null;
-  saveRefs();
-  stopPicking(false);
-}, true);
-
-/* ---------- dialogo principal ---------- */
-const CSS = [
-  '#arx-dialog{width:min(580px,94vw);max-height:92vh;overflow:auto;border:1px solid #111;border-radius:6px;padding:1.1rem 1.2rem}',
-  '#arx-dialog::backdrop{background:rgba(0,0,0,.45)}',
-  '#arx-dialog h2{margin-bottom:.6rem}',
-  '#arx-dialog h3{font-size:.98rem;margin:1rem 0 .35rem}',
-  '#arx-dialog ol{margin:.3rem 0 0;padding-left:1.2rem}',
-  '#arx-dialog li{margin:.2rem 0}',
-  '.arx-row{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin-top:.45rem}',
-  '.arx-note{color:#555;font-size:.88rem;margin-top:.35rem}',
-  '.arx-mono{font-variant-numeric:tabular-nums}',
-  '.arx-refs{font-variant-numeric:tabular-nums;font-size:.9rem;margin:.35rem 0}',
-  '.arx-dot{display:inline-block;width:.72em;height:.72em;border-radius:50%;margin-right:.3em;vertical-align:-.06em}',
-  '#arx-status{margin-top:.6rem;font-weight:600}',
-  '#arx-status:empty{display:none}',
-  '#arx-ql img{display:block;border-radius:6px}',
-  '#arx-qrbox summary{cursor:pointer;font-weight:650;margin-top:.9rem}',
-  '#arx-qr{display:block;margin:.5rem 0;max-width:220px}',
-  '#arx-qr[hidden]{display:none}',
-  '#arx-link{word-break:break-all;font-size:.82rem}',
-  '#arx-banner{position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:60;background:#111;color:#fff;padding:.55rem .8rem;border-radius:6px;display:flex;gap:.7rem;align-items:center;width:max-content;max-width:94vw;box-shadow:0 6px 20px rgba(0,0,0,.3)}',
-  '#arx-banner[hidden]{display:none}',
-  '#arx-banner button{min-height:34px;padding:.3rem .6rem;flex:none}',
-  '#arx-overlay{position:fixed;inset:0;z-index:2147483000;display:none;color:#fff;font:15px/1.35 system-ui,sans-serif;-webkit-user-select:none;user-select:none;background:transparent}',
-  '#arx-overlay.on{display:block}',
-  '#arx-touch{position:absolute;inset:0;touch-action:none}',
-  '.arx-top{position:absolute;left:0;right:0;top:0;display:flex;gap:.5rem;align-items:flex-start;padding:max(10px,env(safe-area-inset-top)) 10px 10px}',
-  '#arx-hint{flex:1;background:rgba(0,0,0,.62);padding:.55rem .7rem;border-radius:6px}',
-  '.arx-ui button{min-height:44px;padding:.4rem .75rem;border-radius:6px;border:1px solid rgba(255,255,255,.55);background:rgba(0,0,0,.55);color:#fff;font-weight:650}',
-  '.arx-ui button.primary,.arx-ui button[aria-pressed=true]{background:#fff;color:#111;border-color:#fff}',
-  '.arx-ui button[hidden]{display:none}',
-  '.arx-bottom{position:absolute;left:0;right:0;bottom:0;padding:8px 10px max(10px,env(safe-area-inset-bottom))}',
-  '.arx-actions{display:flex;gap:.45rem;flex-wrap:wrap;margin-bottom:.5rem}',
-  '.arx-sheet{background:rgba(0,0,0,.62);border-radius:8px;padding:.45rem .7rem}',
-  '.arx-sheet summary{cursor:pointer;font-weight:650;min-height:30px;display:flex;align-items:center}',
-  '.arx-sheet label,.arx-line{display:flex;align-items:center;gap:.5rem;margin:.35rem 0}',
-  '.arx-sheet input[type=range]{flex:1;min-width:80px;accent-color:#fff}',
-  '.arx-sheet button{min-height:36px;padding:.2rem .55rem}',
-  '.arx-chips{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.3rem}',
-  '.arx-chips button[aria-pressed=false]{opacity:.5;background:rgba(0,0,0,.55);color:#fff;border-color:rgba(255,255,255,.55)}'
-].join('\n');
-
-const QL_IMG = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
-  '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="48" viewBox="0 0 240 48">' +
-  '<rect width="240" height="48" rx="6" fill="#111"/>' +
-  '<text x="120" y="30" font-family="system-ui,-apple-system,sans-serif" font-size="17" font-weight="700" fill="#fff" text-anchor="middle">Abrir en AR (1:1)</text></svg>');
-
-function buildUI() {
-  if ($('arx-dialog')) return;
-  const style = document.createElement('style');
-  style.textContent = CSS;
-  document.head.appendChild(style);
-  const dlg = document.createElement('dialog');
-  dlg.id = 'arx-dialog';
-  dlg.innerHTML =
-    '<h2>Realidad aumentada en obra</h2>' +
-    '<p>Recorre <b id="arx-level"></b> a escala 1:1 con la cámara del celular o tablet: el modelo queda fijo en su sitio real mientras caminas.</p>' +
-    '<ol class="arx-note">' +
-    '<li>(Recomendado) Marca dos puntos A y B en el modelo que puedas ubicar en obra: esquinas de columnas o cruces de ejes.</li>' +
-    '<li>En obra, pulsa <b>Iniciar AR</b>, apunta al piso y toca A y luego B en su lugar real: el modelo queda alineado.</li>' +
-    '<li>Camina para recorrerlo. Usa transparencia, corte y la fecha 4D para comparar con lo construido.</li>' +
-    '</ol>' +
-    '<h3>Puntos de referencia</h3>' +
-    '<div id="arx-refs" class="arx-refs"></div>' +
-    '<div class="arx-row"><button id="arx-pick" type="button">Elegir A y B en el modelo</button>' +
-    '<button id="arx-clear" type="button">Borrar puntos</button></div>' +
-    '<h3>Cámara</h3>' +
-    '<p id="arx-device" class="arx-note"></p>' +
-    '<div class="arx-row">' +
-    '<button id="arx-start" class="primary" type="button" hidden>Iniciar AR con la cámara</button>' +
-    '<button id="arx-usdz" class="primary" type="button" hidden>Preparar modelo para AR</button>' +
-    '<a id="arx-ql" rel="ar" hidden><img alt="Abrir en AR" width="240" height="48" src="' + QL_IMG + '"></a>' +
-    '</div>' +
-    '<p id="arx-status" role="status"></p>' +
-    '<details id="arx-qrbox"><summary>QR para abrir en el celular o pegar en obra</summary>' +
-    '<canvas id="arx-qr" aria-label="Código QR de realidad aumentada"></canvas>' +
-    '<a id="arx-link" target="_blank" rel="noopener"></a>' +
-    '<div class="arx-row"><button id="arx-copy" type="button">Copiar enlace</button></div>' +
-    '<p class="arx-note">Escanéalo con el celular: abre este piso, la fecha de corte y los puntos A-B directamente en modo AR. Puedes imprimirlo y pegarlo en obra junto al punto A, como el marcador del video.</p>' +
-    '</details>' +
-    '<form method="dialog" class="arx-row"><button type="submit">Cerrar</button></form>';
-  document.body.appendChild(dlg);
-  dlg.addEventListener('close', function () { if (!pick.step && !AR.session) showRefMarkers(false); });
-  $('arx-pick').addEventListener('click', startPicking);
-  $('arx-clear').addEventListener('click', function () { refs.A = null; refs.B = null; saveRefs(); updateMarkers(); renderRefs(); drawQR(); });
-  $('arx-start').addEventListener('click', startWebXR);
-  $('arx-usdz').addEventListener('click', prepareQuickLook);
-  $('arx-qrbox').addEventListener('toggle', function () { if ($('arx-qrbox').open) drawQR(); });
-  $('arx-copy').addEventListener('click', function () {
-    const url = arLink();
-    if (navigator.clipboard) navigator.clipboard.writeText(url).then(function () { say('Enlace copiado.'); }, function () { say(url); });
-    else say(url);
-  });
-}
-function say(text) { const s = $('arx-status'); if (s) s.textContent = text || ''; }
-function renderRefs() {
-  const el = $('arx-refs');
-  if (!el) return;
-  const dot = function (k) { return '<span class="arx-dot" style="background:' + (k === 'A' ? '#ff3b30' : '#0a84ff') + '"></span>'; };
-  if (refs.A && refs.B) {
-    const d = Math.hypot(refs.A.x - refs.B.x, refs.A.z - refs.B.z);
-    el.innerHTML = dot('A') + 'A (' + refs.A.x.toFixed(2) + ', ' + refs.A.z.toFixed(2) + ') · ' +
-      dot('B') + 'B (' + refs.B.x.toFixed(2) + ', ' + refs.B.z.toFixed(2) + ') · distancia ' + d.toFixed(2) + ' m';
-  } else {
-    el.textContent = 'Sin puntos: el modelo se colocará donde toques y podrás girarlo y moverlo con los dedos.';
-  }
-  const c = $('arx-clear');
-  if (c) c.hidden = !(refs.A && refs.B);
-}
-function arLink() {
-  const u = new URL(location.href);
-  const q = new URLSearchParams();
-  const lv = $('level') && $('level').value;
-  if (lv) q.set('piso', lv);
-  const f = $('date') && $('date').value;
-  if (f) q.set('fecha', f);
-  q.set('modo', 'ar');
-  if (refs.A && refs.B) { q.set('refA', refs.A.x + ',' + refs.A.z); q.set('refB', refs.B.x + ',' + refs.B.z); }
-  u.search = q.toString();
-  u.hash = '';
-  return u.href;
-}
-async function drawQR() {
-  const box = $('arx-qrbox');
-  if (!box || !box.open) return;
-  const url = arLink();
-  $('arx-link').href = url;
-  $('arx-link').textContent = url;
-  try {
-    const mod = await import('https://cdn.jsdelivr.net/npm/qrcode@1.5.4/+esm');
-    const QR = mod.default && mod.default.toCanvas ? mod.default : mod;
-    await QR.toCanvas($('arx-qr'), url, { width: 220, margin: 2 });
-    $('arx-qr').hidden = false;
-  } catch (e) {
-    $('arx-qr').hidden = true;
-  }
-}
-async function openDialog() {
-  buildUI();
-  const dlg = $('arx-dialog');
-  const lvSel = $('level');
-  $('arx-level').textContent = lvSel && lvSel.selectedOptions[0] ? lvSel.selectedOptions[0].textContent : 'el piso';
-  renderRefs();
-  say('');
-  $('arx-ql').hidden = true;
-  if (!dlg.open) dlg.showModal();
-  showRefMarkers(true);
-  const ready = modelReady();
-  const xr = await checkXR();
-  const start = $('arx-start'), usdz = $('arx-usdz'), dev = $('arx-device');
-  start.hidden = !xr;
-  usdz.hidden = xr || !(isIOS || quickLook);
-  start.disabled = usdz.disabled = !ready;
-  $('arx-pick').disabled = !ready;
-  if (xr) dev.textContent = 'Este equipo admite AR con seguimiento del entorno (WebXR + ARCore). Se pedirá permiso para usar la cámara.';
-  else if (isIOS || quickLook) dev.textContent = 'iPhone/iPad: se prepara lo que ves ahora (piso, disciplinas, colores 4D, transparencia y corte) y se abre en AR Quick Look a escala fija 1:1. Si no abre, usa Safari.';
-  else dev.textContent = 'Este equipo no tiene cámara AR. Abre esta página en tu celular o tablet: en Android con Chrome (Servicios de Google Play para RA) o en iPhone/iPad con Safari. Usa el QR de abajo.';
-  if (!ready) say('Espera a que cargue el modelo…');
-  const box = $('arx-qrbox');
-  if (!xr && !isIOS && !quickLook) box.open = true;
-  drawQR();
-}
-
-/* ---------- sesion WebXR (Android) ---------- */
 const st = {
-  mode: 'place', A: null, R: null, theta: 0, thetaBase: 0, yOff: 0, locked: false,
-  base: null, hitSource: null, lastHit: null, view: null, proj: null, tapA: null,
-  saved: null, group: null, reticle: null, taps: [], cam: null
+  session: null, base: null, viewerSpace: null, hit: null, lastHit: null, view: null, proj: null,
+  mode: 'locate', A: null, R: null, theta: 0, yOff: 0, adjust: false, info: true,
+  heading: [], gps: null, gpsWatch: null, compassFn: null, compass: null, placedWith: null, reticle: null,
+  saved: null, sheet: null,
 };
 
-function buildOverlay() {
-  let ov = $('arx-overlay');
-  if (ov) return ov;
-  ov = document.createElement('div');
-  ov.id = 'arx-overlay';
-  ov.innerHTML =
-    '<div id="arx-touch"></div>' +
-    '<div class="arx-top arx-ui"><div id="arx-hint"></div><button id="arx-exit" type="button">Salir</button></div>' +
-    '<div class="arx-bottom arx-ui">' +
-    '<div class="arx-actions">' +
-    '<button id="arx-mark" class="primary" type="button">Colocar aquí</button>' +
-    '<button id="arx-quick" type="button">Colocación rápida</button>' +
-    '<button id="arx-align" type="button">Alinear con A y B</button>' +
-    '<button id="arx-replace" type="button">Recolocar</button>' +
-    '<button id="arx-lock" type="button" aria-pressed="false">Bloquear</button>' +
-    '</div>' +
-    '<details class="arx-sheet"><summary>Controles del modelo</summary>' +
-    '<label>Transparencia <input id="arx-opacity" type="range" min="10" max="100"></label>' +
-    '<label><input id="arx-cut" type="checkbox"> Corte <input id="arx-cuth" type="range" min="0" max="100"></label>' +
-    '<label>4D <span id="arx-date" class="arx-mono"></span><input id="arx-time" type="range" min="0" max="1" step="1"></label>' +
-    '<label>Giro <input id="arx-rot" type="range" min="-180" max="180" step="0.5"><button type="button" data-rot="-1">−1°</button><button type="button" data-rot="1">+1°</button></label>' +
-    '<div class="arx-line">Altura <button type="button" data-h="-0.02">▼ 2 cm</button><button type="button" data-h="0.02">▲ 2 cm</button><span id="arx-hval" class="arx-mono">0 cm</span></div>' +
-    '<div id="arx-disc" class="arx-chips"></div>' +
-    '</details>' +
-    '</div>';
-  document.body.appendChild(ov);
-  ov.querySelectorAll('.arx-ui').forEach(function (el) { el.addEventListener('beforexrselect', function (e) { e.preventDefault(); }); });
-  $('arx-exit').addEventListener('click', function () { if (AR.session) AR.session.end(); });
-  $('arx-mark').addEventListener('click', function () { onSelect(); });
-  $('arx-quick').addEventListener('click', function () { setMode('place'); });
-  $('arx-align').addEventListener('click', function () { setMode('pickA'); });
-  $('arx-replace').addEventListener('click', function () { setMode(refs.A && refs.B ? 'pickA' : 'place'); });
-  $('arx-lock').addEventListener('click', function () { setLocked(!st.locked); });
-  $('arx-opacity').addEventListener('input', function (e) { poke('opacity', 'value', e.target.value, ['input', 'change']); });
-  $('arx-cut').addEventListener('change', function (e) { poke('sectionEnabled', 'checked', e.target.checked, ['input', 'change']); });
-  $('arx-cuth').addEventListener('input', function (e) { poke('section', 'value', e.target.value, ['input', 'change']); });
-  $('arx-time').addEventListener('input', function (e) { poke('timeline', 'value', e.target.value, ['input']); showDate(); });
-  $('arx-rot').addEventListener('input', function (e) {
-    if (!st.R) return;
-    st.theta = st.thetaBase + Number(e.target.value) * Math.PI / 180;
-    applyPose();
-  });
-  ov.querySelectorAll('[data-rot]').forEach(function (b) {
-    b.addEventListener('click', function () { if (!st.R) return; st.theta += Number(b.dataset.rot) * Math.PI / 180; applyPose(); });
-  });
-  ov.querySelectorAll('[data-h]').forEach(function (b) {
-    b.addEventListener('click', function () { if (!st.R) return; st.yOff += Number(b.dataset.h); applyPose(); });
-  });
-  wireGestures($('arx-touch'));
-  return ov;
-}
-function showDate() { const d = $('date'); $('arx-date').textContent = d ? fmtDate(d.value) : ''; }
-function syncOverlay() {
-  const o = $('opacity');
-  if (o) $('arx-opacity').value = o.value;
-  const se = $('sectionEnabled'), s = $('section');
-  $('arx-cut').checked = !!(se && se.checked);
-  if (s) $('arx-cuth').value = s.value;
-  const tl = $('timeline'), x = $('arx-time');
-  if (tl) { x.min = tl.min; x.max = tl.max; x.value = tl.value; }
-  showDate();
-  const box = $('arx-disc');
-  box.textContent = '';
-  document.querySelectorAll('#disciplines label').forEach(function (row) {
-    const input = row.querySelector('input[type=checkbox]');
-    if (!input || input.disabled) return;
-    const name = input.getAttribute('aria-label') || row.textContent.trim();
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = name;
-    b.setAttribute('aria-pressed', String(input.checked));
-    b.addEventListener('click', function () {
-      input.checked = !input.checked;
-      input.dispatchEvent(new Event('change', { bubbles: true }));
-      b.setAttribute('aria-pressed', String(input.checked));
-    });
-    box.appendChild(b);
-  });
-}
-function hint(text) { const h = $('arx-hint'); if (h) h.textContent = text; }
-function setLocked(on) {
-  st.locked = on;
-  const b = $('arx-lock');
-  b.setAttribute('aria-pressed', String(on));
-  b.textContent = on ? 'Posición bloqueada' : 'Bloquear';
+export async function openAR(app) {
+  S = app; THREE = S.three.THREE;
+  if (xrOk === null) xrOk = !!(navigator.xr && await navigator.xr.isSessionSupported('immersive-ar').catch(() => false));
+  const dlg = $('dlg-ar'), body = $('ar-intro'), foot = $('ar-foot');
+  const g = S.georef;
+  const geoTxt = g ? 'Ubicación guardada (' + g.src + '): ' + g.lat.toFixed(6) + ', ' + g.lon.toFixed(6) + ' · rotación ' + (+g.rot).toFixed(1) + '°.'
+    : 'El modelo todavía no tiene ubicación geográfica.';
+  let html = '<ol class="steps">';
+  if (xrOk) {
+    html += g
+      ? '<li>Al iniciar, el celular usa el <b>GPS y la brújula</b> para poner el modelo en su lugar real a escala 1:1.</li><li>Apunta al piso y muévete despacio unos segundos: cuando se detecte el piso, el modelo aparece solo.</li><li>Si no coincide del todo, pulsa <b>Ajustar</b>, muévelo con un dedo y gíralo con dos; luego <b>Guardar ajuste</b> para que los demás lo vean igual.</li>'
+      : '<li>Apunta al piso y toca la pantalla donde quieras el centro del piso 18.</li><li>Gíralo con dos dedos hasta que coincida con la obra. Para que aparezca solo, guarda la ubicación en el mapa.</li>';
+    html += '<li>Dentro del AR: <b>Capas</b> para elegir especialidades, <b>4D</b> para la fecha y <b>Vista</b> para opacidad, corte y colores. Toca un elemento para ver su ficha.</li></ol>';
+  } else if (isIOS || quickLook) {
+    html += '<li>Se prepara lo que ves ahora (especialidades, colores 4D, opacidad y corte) y se abre en AR Quick Look a escala fija 1:1.</li><li>Apunta al piso, toca para colocarlo y gíralo con dos dedos hasta que coincida.</li></ol>'
+      + '<div class="note warn">En iPhone/iPad Safari no permite AR web con GPS: la colocación es manual. En Android con Chrome el modelo se ubica solo.</div>';
+  } else {
+    html += '<li>Este equipo no tiene cámara AR. Abre el visor en tu celular o tablet escaneando el QR.</li></ol>';
+  }
+  html += '<div class="note' + (g ? '' : ' warn') + '">' + geoTxt + (g ? ' <a href="' + earthUrl(g) + '" target="_blank" rel="noopener">Ver en Google Earth</a>' : '') + '</div>';
+  html += '<p class="small muted">Precisión: el GPS de un celular suele tener entre 3 y 10 m al aire libre y más dentro de edificios, y la brújula puede desviarse cerca de estructuras metálicas. Por eso el ajuste fino y «Guardar ajuste» quedan siempre a mano.</p><p id="ar-msg" class="note warn" hidden></p>';
+  body.innerHTML = html;
+  foot.innerHTML = '';
+  const mk = (txt, cls, fn) => { const b = document.createElement('button'); b.textContent = txt; if (cls) b.className = cls; b.onclick = fn; foot.appendChild(b); return b; };
+  mk('Ubicar en el mapa', '', async () => { dlg.close(); const m = await import('./geo.js?v=2.0.0'); m.openMapEditor(S); });
+  if (xrOk) mk('Iniciar AR', 'primary', () => startXR());
+  else if (isIOS || quickLook) { const b = mk('Preparar modelo', 'primary', () => prepareQuickLook(b)); }
+  else mk('Mostrar QR', 'primary', () => { dlg.close(); $('btn-share').click(); });
+  dlg.showModal();
+  if (xrOk) startSensors();
 }
 
-function makeReticle() {
-  const t = ctors();
-  const g = new t.Object3D();
-  g.matrixAutoUpdate = false;
-  const mat = new t.BasicMaterial({ color: COLORS.white, side: 2 });
-  const ring = new t.Mesh(new t.RingGeometry(0.11, 0.15, 40).rotateX(-Math.PI / 2), mat);
-  const dot = new t.Mesh(new t.RingGeometry(0, 0.025, 16).rotateX(-Math.PI / 2), mat);
-  ring.userData.arx = dot.userData.arx = true;
-  g.add(ring, dot);
-  g.userData.mat = mat;
-  g.visible = false;
-  return g;
+// ------------------------------------------------------------------ sensores
+function startSensors() {
+  if (navigator.geolocation && st.gpsWatch === null) {
+    st.gpsWatch = navigator.geolocation.watchPosition((p) => {
+      const c = p.coords;
+      if (!st.gps || c.accuracy <= st.gps.acc * 1.5 || Date.now() - st.gps.t > 8000) st.gps = { lat: c.latitude, lon: c.longitude, acc: c.accuracy, t: Date.now() };
+      updateStatus();
+    }, () => updateStatus(), { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+  }
+  if (!st.compassFn) {
+    st.compassFn = (ev) => {
+      if (ev.alpha == null) return;
+      if (ev.type === 'deviceorientation' && !ev.absolute && ev.webkitCompassHeading == null) return;
+      const a = rad(ev.alpha), b = rad(ev.beta || 0), c = rad(ev.gamma || 0);
+      const cA = Math.cos(a), sA = Math.sin(a), cB = Math.cos(b), sB = Math.sin(b), cG = Math.cos(c), sG = Math.sin(c);
+      // dirección de la cámara trasera (-Z del dispositivo) en el marco Este-Norte-Arriba
+      const vx = -(cA * sG + cG * sA * sB), vy = -(sA * sG - cA * cG * sB), vz = -cB * cG;
+      if (Math.abs(vz) > 0.8) return; // celular casi horizontal: rumbo inestable
+      st.compass = { h: Math.atan2(vx, vy), t: performance.now() };
+    };
+    addEventListener('deviceorientationabsolute', st.compassFn, true);
+    addEventListener('deviceorientation', st.compassFn, true);
+  }
+}
+function stopSensors() {
+  if (st.gpsWatch !== null) { navigator.geolocation.clearWatch(st.gpsWatch); st.gpsWatch = null; }
+  if (st.compassFn) { removeEventListener('deviceorientationabsolute', st.compassFn, true); removeEventListener('deviceorientation', st.compassFn, true); st.compassFn = null; }
+}
+function headingStats() {
+  const h = st.heading.slice(-60);
+  if (h.length < 8) return null;
+  let sx = 0, sy = 0; for (const v of h) { sx += Math.cos(v); sy += Math.sin(v); }
+  const m = Math.atan2(sy, sx), Rl = Math.hypot(sx, sy) / h.length;
+  return { mean: m, sd: deg(Math.sqrt(Math.max(0, -2 * Math.log(Math.max(Rl, 1e-6))))), n: h.length };
 }
 
-async function startWebXR() {
-  const t = ctors();
-  const parts = sceneParts();
-  if (!t || !parts || !parts.group) { say('Espera a que cargue el modelo.'); return; }
-  const dlg = $('arx-dialog');
-  if (dlg && dlg.open) dlg.close();
-  const ov = buildOverlay();
-  ov.classList.add('on');
-  hint('Iniciando la cámara…');
+// ------------------------------------------------------------------ interfaz AR
+function buildUI() {
+  const ui = $('ar-ui');
+  ui.innerHTML =
+    '<div id="ar-touch"></div>'
+    + '<div class="ar-top ui"><div id="ar-hint">Iniciando cámara…</div><button class="ar-btn" id="ar-exit">Salir</button></div>'
+    + '<div class="ar-side ui">'
+    + '<button class="ar-btn round" id="ar-b-layers" title="Especialidades"><svg class="icon"><use href="#i-layers"/></svg></button>'
+    + '<button class="ar-btn round" id="ar-b-4d" title="Fecha 4D"><svg class="icon"><use href="#i-clock"/></svg></button>'
+    + '<button class="ar-btn round" id="ar-b-view" title="Vista">◐</button>'
+    + '<button class="ar-btn round" id="ar-b-adjust" title="Ajustar posición">✥</button>'
+    + '</div>'
+    + '<div id="ar-card" class="ui"></div>'
+    + '<div class="ar-bottom ui"><div class="ar-actions" id="ar-actions"></div>'
+    + '<div class="ar-quick" id="ar-quick"><label>Corte<input type="range" id="ar-q-cut" min="0" max="100"></label><label>Transparencia<input type="range" id="ar-q-op" min="0" max="90"></label></div>'
+    + '<div class="ar-sheet" id="ar-s-layers"><h3>Especialidades</h3><div class="ar-chips" id="ar-disc"></div></div>'
+    + '<div class="ar-sheet" id="ar-s-4d"><h3>Simulación 4D</h3><div class="row"><b id="ar-date"></b><button class="ar-btn" id="ar-play">▶ Reproducir</button><button class="ar-btn" id="ar-today">Hoy</button></div><input type="range" id="ar-time"><div class="ar-legend" id="ar-legend"></div></div>'
+    + '<div class="ar-sheet" id="ar-s-view"><h3>Vista</h3>'
+    + '<div class="row"><label>Opacidad</label><output id="ar-op-o"></output></div><input type="range" id="ar-op" min="10" max="100">'
+    + '<div class="row"><label><input type="checkbox" id="ar-cut-on"> Corte horizontal</label><output id="ar-cut-o"></output></div><input type="range" id="ar-cut" min="0" max="100">'
+    + '<h3>Colorear por</h3><div class="ar-chips" id="ar-color"><button data-v="4d">Estado 4D</button><button data-v="disc">Especialidad</button><button data-v="real">Materiales</button></div>'
+    + '<h3>Pendientes a la fecha</h3><div class="ar-chips" id="ar-pend"><button data-v="ghost">Fantasma</button><button data-v="hide">Ocultos</button><button data-v="solid">Visibles</button></div></div>'
+    + '<div class="ar-sheet" id="ar-s-adjust"><h3>Ajuste fino</h3><p class="small" style="margin:0 0 8px;opacity:.85">Arrastra con un dedo para mover y gira con dos. También puedes usar los botones.</p>'
+    + '<div class="ar-chips"><button data-rot="-5">⟲ 5°</button><button data-rot="-1">⟲ 1°</button><button data-rot="1">1° ⟳</button><button data-rot="5">5° ⟳</button></div>'
+    + '<div class="ar-chips" style="margin-top:6px"><button data-mv="f">↑ 10 cm</button><button data-mv="b">↓ 10 cm</button><button data-mv="l">← 10 cm</button><button data-mv="r">10 cm →</button><button data-h="0.02">▲ 2 cm</button><button data-h="-0.02">▼ 2 cm</button></div>'
+    + '<div class="ar-actions" style="margin-top:10px"><button class="ar-btn primary" id="ar-save">Guardar ajuste como ubicación</button><button class="ar-btn" id="ar-replace">Recolocar</button></div></div>'
+    + '<div class="ar-status" id="ar-status"></div></div>';
+  ui.querySelectorAll('.ui').forEach((el) => el.addEventListener('beforexrselect', (e) => e.preventDefault()));
+  $('ar-exit').onclick = () => st.session && st.session.end();
+  const sheets = { layers: 'ar-s-layers', '4d': 'ar-s-4d', view: 'ar-s-view', adjust: 'ar-s-adjust' };
+  for (const k in sheets) $('ar-b-' + k).onclick = () => toggleSheet(k === st.sheet ? null : k);
+  function toggleSheet(k) {
+    st.sheet = k;
+    for (const kk in sheets) { $(sheets[kk]).classList.toggle('on', kk === k); $('ar-b-' + kk).classList.toggle('on', kk === k); }
+    st.adjust = k === 'adjust';
+    if (k) $('ar-card').classList.remove('on');
+    $('ar-quick').classList.toggle('on', !k && st.mode === 'placed');
+  }
+  st.toggleSheet = toggleSheet;
+  // especialidades
+  const disc = $('ar-disc'); disc.innerHTML = '';
+  for (const D of S.disc.values()) {
+    const b = document.createElement('button'); b.innerHTML = '<i style="background:' + D.color + '"></i>' + D.name;
+    b.setAttribute('aria-pressed', String(D.visible));
+    b.onclick = () => { S.setDiscVisible(D.d, !D.visible); b.setAttribute('aria-pressed', String(D.visible)); };
+    disc.appendChild(b);
+  }
+  const all = document.createElement('button'); all.textContent = 'Todas';
+  all.onclick = () => { for (const D of S.disc.values()) D.visible = true; S.syncLayerButtons(); S.refresh(); disc.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', 'true')); };
+  disc.appendChild(all);
+  // 4D
+  const t = $('ar-time'), main = $('time');
+  t.min = main.min; t.max = main.max; t.value = main.value;
+  t.oninput = () => { main.value = t.value; main.dispatchEvent(new Event('input')); };
+  $('ar-play').onclick = () => { S.togglePlay(); };
+  $('ar-today').onclick = () => $('today').click();
+  // vista
+  $('ar-op').value = Math.round(S.opacity * 100); $('ar-op-o').textContent = Math.round(S.opacity * 100) + ' %';
+  $('ar-op').oninput = (e) => { S.setOpacity(+e.target.value / 100); $('ar-op-o').textContent = e.target.value + ' %'; };
+  $('ar-cut-on').checked = S.cutOn; $('ar-cut').value = Math.round(S.cutT * 100);
+  $('ar-cut-on').onchange = (e) => S.setCut(e.target.checked);
+  $('ar-cut').oninput = (e) => { S.setCut(true, +e.target.value / 100); $('ar-cut-on').checked = true; };
+  const syncSeg = () => {
+    $('ar-color').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === S.colorMode)));
+    $('ar-pend').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === S.pending)));
+  };
+  $('ar-color').querySelectorAll('button').forEach((b) => b.onclick = () => { S.setColorMode(b.dataset.v); syncSeg(); });
+  $('ar-pend').querySelectorAll('button').forEach((b) => b.onclick = () => { S.pending = b.dataset.v; $('pending-mode').value = S.pending; S.refresh(); syncSeg(); });
+  syncSeg();
+  // ajuste
+  ui.querySelectorAll('[data-rot]').forEach((b) => b.onclick = () => { if (!st.R) return; st.theta += rad(+b.dataset.rot); applyPose(); });
+  ui.querySelectorAll('[data-h]').forEach((b) => b.onclick = () => { if (!st.R) return; st.yOff += +b.dataset.h; applyPose(); });
+  ui.querySelectorAll('[data-mv]').forEach((b) => b.onclick = () => {
+    if (!st.R || !st.view) return;
+    const fx = -st.view[8], fz = -st.view[10], l = Math.hypot(fx, fz) || 1; const ux = fx / l, uz = fz / l;
+    const d = 0.1, k = b.dataset.mv;
+    const v = k === 'f' ? [ux, uz] : k === 'b' ? [-ux, -uz] : k === 'l' ? [uz, -ux] : [-uz, ux];
+    st.R.x += v[0] * d; st.R.z += v[1] * d; applyPose();
+  });
+  $('ar-save').onclick = saveAdjust;
+  // barra rápida (como en el video): corte y transparencia siempre a mano
+  $('ar-q-cut').value = S.cutOn ? Math.round(S.cutT * 100) : 100;
+  $('ar-q-cut').oninput = (e) => { const v = +e.target.value; S.setCut(v < 100, v / 100); $('ar-cut-on').checked = v < 100; $('ar-cut').value = v; };
+  $('ar-q-op').value = Math.round((1 - S.opacity) * 100);
+  $('ar-q-op').oninput = (e) => { const o = 1 - (+e.target.value) / 100; S.setOpacity(o); $('ar-op').value = Math.round(o * 100); $('ar-op-o').textContent = Math.round(o * 100) + ' %'; };
+  $('ar-replace').onclick = () => setMode(S.georef ? 'locate' : 'manual');
+  wireGestures($('ar-touch'));
+  if (!st.hooked) {
+    st.hooked = true;
+    S.on('cut', () => { if (!st.session) return; $('ar-time').value = $('time').value; $('ar-date').textContent = S.fmtDate(S.cut); legend(); });
+    S.on('refresh', () => { if (st.session) legend(); });
+  }
+}
+function legend() {
+  const c = {}; for (const k in STATES) c[k] = 0;
+  for (const e of S.elems) if (e.vis) c[e.state]++;
+  $('ar-legend').innerHTML = Object.entries(STATES).map(([k, v]) => '<span><i style="background:' + v.color + '"></i>' + v.label + ' ' + c[k] + '</span>').join('');
+}
+function hint(h, sub) { $('ar-hint').innerHTML = h + (sub ? '<small>' + sub + '</small>' : ''); }
+function updateStatus() {
+  const box = $('ar-status'); if (!box) return;
+  const parts = [];
+  if (S.georef) {
+    parts.push(st.gps ? 'GPS ±' + Math.round(st.gps.acc) + ' m' : 'GPS buscando…');
+    const hs = headingStats(); parts.push(hs ? 'Brújula ±' + Math.max(1, Math.round(hs.sd)) + '°' : (st.compass ? 'Brújula calibrando…' : 'Brújula no disponible'));
+  }
+  parts.push('Corte ' + S.fmtDate(S.cut));
+  if (st.placedWith) parts.push(st.placedWith);
+  box.innerHTML = parts.map((p) => '<span>' + p + '</span>').join('');
+}
+function actions(list) {
+  const box = $('ar-actions'); box.innerHTML = '';
+  for (const [txt, fn, cls] of list) { const b = document.createElement('button'); b.className = 'ar-btn ' + (cls || ''); b.textContent = txt; b.onclick = fn; box.appendChild(b); }
+}
+
+// ------------------------------------------------------------------ sesión WebXR
+async function startXR() {
+  const dlg = $('dlg-ar'); if (dlg.open) dlg.close();
+  buildUI();
+  const ui = $('ar-ui'); ui.classList.add('on');
   let session;
   try {
-    session = await navigator.xr.requestSession('immersive-ar', {
-      requiredFeatures: ['hit-test'],
-      optionalFeatures: ['dom-overlay'],
-      domOverlay: { root: ov }
-    });
+    session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test'], optionalFeatures: ['dom-overlay', 'light-estimation'], domOverlay: { root: ui } });
   } catch (err) {
-    ov.classList.remove('on');
-    openDialog();
-    say('No se pudo abrir la cámara AR: ' + (err && err.message ? err.message : err));
-    return;
+    ui.classList.remove('on'); await openAR(S); const m = $('ar-msg'); m.hidden = false; m.textContent = 'No se pudo abrir la cámara AR: ' + err.message; return;
   }
-  const r = ctx.renderer, scene = ctx.scene;
-  st.group = parts.group;
-  st.saved = { background: scene.background, grid: parts.grid.visible };
-  st.cam = st.cam || new t.Camera(50, 1, 0.03, 1000);
-  st.R = null; st.A = null; st.lastHit = null; st.view = null; st.proj = null; st.yOff = 0;
-  setLocked(false);
-  if ($('explode') && $('explode').getAttribute('aria-pressed') === 'true') $('explode').click();
-  scene.background = null;
-  parts.grid.visible = false;
-  st.group.visible = false;
-  st.reticle = makeReticle();
-  scene.add(st.reticle);
-  AR.session = session;
+  const r = S.three.renderer, cam = S.three.camera;
+  st.saved = { pos: cam.position.clone(), quat: cam.quaternion.clone(), near: cam.near, far: cam.far, edges: S.edges, mode: S.mode, target: S.three.controls.target.clone() };
+  if (S.mode !== 'orbit') S.setMode('orbit');
+  S.edges = false; S.refresh();
+  cam.near = 0.03; cam.far = 400;
+  st.session = session; st.heading = []; st.R = null; st.A = null; st.yOff = 0; st.lastHit = null; st.placedWith = null;
   session.addEventListener('end', onEnd, { once: true });
   session.addEventListener('select', onSelect);
+  r.xr.setReferenceSpaceType('local');
+  r.xr.setReferenceSpace(null);
+  S.three.modelRoot.visible = false;
+  makeReticle();
+  S.setFrameHook(frame);
   try {
-    r.xr.setReferenceSpace(null);
     await r.xr.setSession(session);
     st.base = r.xr.getReferenceSpace();
-    const viewer = await session.requestReferenceSpace('viewer');
-    st.hitSource = await session.requestHitTestSource({ space: viewer });
-  } catch (err) {
-    console.error('[AR]', err);
-    session.end().catch(function () {});
-    return;
-  }
-  syncOverlay();
-  setMode(refs.A && refs.B ? 'pickA' : 'place');
+    st.viewerSpace = await session.requestReferenceSpace('viewer');
+    st.hit = await session.requestHitTestSource({ space: st.viewerSpace });
+  } catch (err) { console.error(err); session.end(); return; }
+  startSensors();
+  if (S.georef) setMode('locate'); else setMode('manual');
+  updateStatus(); legend();
+  $('ar-date').textContent = S.fmtDate(S.cut);
 }
-
 function onEnd() {
-  const r = ctx.renderer;
-  try { if (st.hitSource) st.hitSource.cancel(); } catch (e) { /* ya cancelado */ }
-  st.hitSource = null; st.base = null;
-  try { r.xr.setReferenceSpace(null); } catch (e) { /* sin efecto */ }
-  const parts = sceneParts();
-  ctx.scene.background = st.saved ? st.saved.background : ctx.scene.background;
-  if (parts && parts.grid && st.saved) parts.grid.visible = st.saved.grid;
-  if (st.group) st.group.visible = true;
-  if (st.reticle) { ctx.scene.remove(st.reticle); st.reticle = null; }
-  clearTaps();
-  AR.session = null;
-  const ov = $('arx-overlay');
-  if (ov) ov.classList.remove('on');
-  showRefMarkers(false);
-  setTimeout(redraw, 80);
+  const r = S.three.renderer, cam = S.three.camera;
+  S.setFrameHook(null);
+  try { st.hit && st.hit.cancel(); } catch { /* */ }
+  st.hit = null; st.base = null; st.session = null;
+  r.xr.setReferenceSpace(null);
+  if (st.reticle) { S.three.scene.remove(st.reticle); st.reticle = null; }
+  S.three.modelRoot.visible = true;
+  const sv = st.saved;
+  cam.position.copy(sv.pos); cam.quaternion.copy(sv.quat); cam.near = sv.near; cam.far = sv.far; cam.updateProjectionMatrix();
+  S.three.controls.target.copy(sv.target); S.three.controls.update();
+  S.edges = sv.edges; S.refresh();
+  $('ar-ui').classList.remove('on'); $('ar-ui').innerHTML = '';
+  stopSensors();
+  setTimeout(() => { window.dispatchEvent(new Event('resize')); S.invalidate(); }, 100);
+}
+function makeReticle() {
+  const g = new THREE.RingGeometry(0.12, 0.16, 40).rotateX(-Math.PI / 2);
+  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true }));
+  m.renderOrder = 50; m.matrixAutoUpdate = false; m.visible = false;
+  st.reticle = m; S.three.scene.add(m);
 }
 
-function arFrame(time, frame) {
-  const r = ctx.renderer;
+const MODES = {
+  locate: 'Apunta al piso y muévete despacio: el modelo aparecerá en su ubicación real.',
+  manual: 'Apunta al piso y toca la pantalla para colocar el centro del piso 18 a escala 1:1.',
+};
+function setMode(m) {
+  st.mode = m;
+  const placing = m !== 'placed';
+  if (placing) { S.three.renderer.xr.setReferenceSpace(null); st.R = null; if (m === 'locate') st.heading = []; S.three.modelRoot.visible = false; }
+  else S.three.modelRoot.visible = true;
+  if (m === 'locate') { hint(MODES.locate, 'Sostén el celular vertical, con la cámara hacia adelante.'); actions([['Colocar por GPS ahora', () => placeByGeo(true), 'primary'], ['Colocar a mano', () => setMode('manual')]]); }
+  else if (m === 'manual') { hint(MODES.manual, S.georef ? '' : 'Consejo: guarda la ubicación en el mapa para que el modelo aparezca solo.'); actions([['Colocar aquí', () => onSelect(), 'primary']].concat(S.georef ? [['Usar GPS', () => setMode('locate')]] : [])); }
+  else { hint('Modelo a escala 1:1. Camina para recorrerlo.', 'Toca un elemento para ver su ficha. ✥ para ajustar la posición.'); actions([]); }
+  const q = $('ar-quick'); if (q) q.classList.toggle('on', m === 'placed' && !st.sheet);
+  updateStatus();
+}
+
+function frame(time, xframe) {
+  const r = S.three.renderer;
   if (st.base) {
-    const vp = frame.getViewerPose(st.base);
+    const vp = xframe.getViewerPose(st.base);
     if (vp && vp.views.length) {
-      st.view = Float32Array.from(vp.views[0].transform.matrix);
-      st.proj = Float32Array.from(vp.views[0].projectionMatrix);
-    }
-    if (st.hitSource && st.reticle) {
-      const hits = frame.getHitTestResults(st.hitSource);
-      const pb = hits.length ? hits[0].getPose(st.base) : null;
-      if (pb) {
-        const p = pb.transform.position;
-        st.lastHit = { x: p.x, y: p.y, z: p.z };
-        const pw = hits[0].getPose(r.xr.getReferenceSpace());
-        if (pw) st.reticle.matrix.fromArray(pw.transform.matrix);
-      } else {
-        st.lastHit = null;
+      st.view = Float32Array.from(vp.views[0].transform.matrix); st.proj = Float32Array.from(vp.views[0].projectionMatrix);
+      // muestra de rumbo: δ = rumbo de brújula − rumbo XR de la cámara
+      if (st.compass && performance.now() - st.compass.t < 300) {
+        const fx = -st.view[8], fz = -st.view[10], fy = -st.view[9];
+        if (Math.abs(fy) < 0.8) { st.heading.push(wrapPi(st.compass.h - Math.atan2(fx, -fz))); if (st.heading.length > 240) st.heading.shift(); }
       }
+    }
+    if (st.hit) {
+      const hits = xframe.getHitTestResults(st.hit);
+      const pb = hits.length ? hits[0].getPose(st.base) : null;
+      if (pb && pb.transform.matrix[5] > 0.85) { // superficie horizontal
+        const p = pb.transform.position; st.lastHit = { x: p.x, y: p.y, z: p.z, t: time };
+        const pw = hits[0].getPose(r.xr.getReferenceSpace()); if (pw) st.reticle.matrix.fromArray(pw.transform.matrix);
+      } else if (!pb) st.lastHit = null;
       st.reticle.visible = !!st.lastHit && st.mode !== 'placed';
+      st.reticle.material.color.set(st.mode === 'locate' ? 0x6cc3ff : 0xffffff);
+    }
+    if (st.mode === 'locate') {
+      const hs = headingStats();
+      if (time - (st.lastStatus || 0) > 600) { st.lastStatus = time; updateStatus(); }
+      if (st.lastHit && st.gps && st.gps.acc < 60 && hs && hs.n >= 24 && hs.sd < 12) placeByGeo(false);
     }
   }
-  r.render(ctx.scene, st.cam);
+  r.render(S.three.scene, S.three.camera);
 }
 
-function cameraHeading() {
-  if (!st.view) return 0;
-  return Math.atan2(-st.view[8], -st.view[10]);
+function placeByGeo(force) {
+  const g = S.georef, hs = headingStats();
+  if (!g) { setMode('manual'); return; }
+  if (!st.view) return;
+  if (!st.gps) { hint('Esperando señal GPS…', 'Si estás bajo techo puede tardar; también puedes colocar a mano.'); return; }
+  if (!hs) { hint('Calibrando la brújula…', 'Mueve el celular en forma de ocho y vuelve a apuntar al frente.'); return; }
+  const floorY = st.lastHit ? st.lastHit.y : st.view[13] - 1.45;
+  const delta = hs.mean;
+  const v = latLonToENU(st.gps.lat, st.gps.lon, g.lat, g.lon); // ancla respecto al celular (m)
+  const c = Math.cos(delta), s = Math.sin(delta);
+  const px = st.view[12], pz = st.view[14];
+  const a = anchorOf(S);
+  st.A = { x: a.x, y: S.floorY, z: a.z };
+  st.R = { x: px + (v.e * c - v.n * s), y: floorY, z: pz - (v.e * s + v.n * c) };
+  st.theta = delta - rad(+g.rot);
+  st.ref = { delta, gps: { ...st.gps }, p: { x: px, z: pz } };
+  st.yOff = 0;
+  st.placedWith = 'Ubicado por GPS ±' + Math.round(st.gps.acc) + ' m · brújula ±' + Math.max(1, Math.round(hs.sd)) + '°';
+  setMode('placed'); applyPose();
+  if (Math.hypot(v.e, v.n) > 250) hint('Estás a ' + Math.round(Math.hypot(v.e, v.n)) + ' m del edificio.', 'El modelo está en su lugar real, pero lejos de ti. Revisa la ubicación en el mapa.');
+  else hint('Modelo ubicado por GPS a escala 1:1.', 'Si no coincide, pulsa ✥ y ajústalo; luego «Guardar ajuste».');
+  if (!force && navigator.vibrate) navigator.vibrate(30);
+}
+
+function onSelect(ev) {
+  if (!st.session) return;
+  if (st.mode === 'placed') { if (!st.adjust) inspect(ev); return; }
+  const h = st.lastHit;
+  if (!h) { hint('Aún no se detecta el piso.', 'Mueve el celular despacio apuntando al suelo.'); return; }
+  if (st.mode === 'locate') { placeByGeo(true); return; }
+  const a = anchorOf(S);
+  st.A = { x: a.x, y: S.floorY, z: a.z };
+  st.R = { x: h.x, y: h.y, z: h.z };
+  const fx = -st.view[8], fz = -st.view[10];
+  st.theta = -Math.atan2(fx, -fz); // el norte de proyecto apunta hacia donde mira la cámara
+  st.yOff = 0; st.placedWith = 'Colocado a mano'; st.ref = null;
+  setMode('placed'); applyPose();
+  st.toggleSheet('adjust');
+  hint('Modelo colocado. Gíralo con dos dedos hasta que coincida con la obra.', 'Cuando esté bien, «Guardar ajuste» para ubicarlo en el mapa.');
 }
 function applyPose() {
   if (!st.base || !st.R || !st.A) return;
   const ct = Math.cos(st.theta), sn = Math.sin(st.theta);
-  const ax = st.A.x * ct + st.A.z * sn;
-  const az = -st.A.x * sn + st.A.z * ct;
+  const ax = st.A.x * ct + st.A.z * sn, az = -st.A.x * sn + st.A.z * ct;
   const pos = { x: st.R.x - ax, y: st.R.y + st.yOff - st.A.y, z: st.R.z - az };
   const rot = { x: 0, y: Math.sin(st.theta / 2), z: 0, w: Math.cos(st.theta / 2) };
-  ctx.renderer.xr.setReferenceSpace(st.base.getOffsetReferenceSpace(new XRRigidTransform(pos, rot)));
-  let deg = (st.theta - st.thetaBase) * 180 / Math.PI;
-  deg = ((deg + 180) % 360 + 360) % 360 - 180;
-  const rs = $('arx-rot');
-  if (rs) rs.value = deg.toFixed(1);
-  const hv = $('arx-hval');
-  if (hv) hv.textContent = (st.yOff >= 0 ? '+' : '') + Math.round(st.yOff * 100) + ' cm';
+  S.three.renderer.xr.setReferenceSpace(st.base.getOffsetReferenceSpace(new XRRigidTransform(pos, rot)));
+}
+// Guarda la posición ajustada como georreferencia (lat, lon, rotación) para compartirla
+function saveAdjust() {
+  if (!st.R) return;
+  let gps = st.gps, delta = null, p = null;
+  if (st.ref) { delta = st.ref.delta; gps = st.ref.gps; p = st.ref.p; }
+  else { const hs = headingStats(); if (hs) delta = hs.mean; p = st.view ? { x: st.view[12], z: st.view[14] } : null; }
+  if (!gps || delta == null || !p) { hint('Para guardar hace falta GPS y brújula.', 'Activa la ubicación del celular y vuelve a intentarlo.'); startSensors(); return; }
+  const X = st.R.x - p.x, Z = st.R.z - p.z, c = Math.cos(delta), s = Math.sin(delta);
+  const e = c * X - s * Z, n = -s * X - c * Z;
+  const ll = enuToLatLon(gps.lat, gps.lon, e, n);
+  let rot = deg(delta - st.theta); rot = ((rot % 360) + 360) % 360;
+  S.saveGeo({ lat: ll.lat, lon: ll.lon, rot });
+  st.placedWith = 'Ajuste guardado';
+  updateStatus();
+  hint('Ubicación guardada.', 'Comparte el QR desde el visor para que otros vean el modelo ya ubicado.');
 }
 
-const MODE_TEXT = {
-  place: 'Apunta al piso y muévete despacio. Cuando aparezca el anillo, toca la pantalla para colocar el modelo a escala 1:1.',
-  placeA: 'Apunta al piso y toca el lugar real del punto A (rojo). Luego gira el modelo con dos dedos o con el control Giro.',
-  pickA: 'Alineación: apunta al piso y toca el lugar real del punto A (rojo).',
-  pickB: 'Ahora toca el lugar real del punto B (azul).',
-  placed: 'Modelo a escala 1:1. Camina para recorrerlo. Arrastra con un dedo para moverlo y gira con dos dedos.'
-};
-function setMode(m, text) {
-  st.mode = m;
-  const placing = m !== 'placed';
-  if (placing) {
-    ctx.renderer.xr.setReferenceSpace(null);
-    clearTaps();
-    if (m === 'pickB' && st.tapA) showTap('A', st.tapA);
+// selección por toque dentro del AR
+function inspect(ev) {
+  let ray = null;
+  if (ev && ev.frame && ev.inputSource) {
+    const pose = ev.frame.getPose(ev.inputSource.targetRaySpace, S.three.renderer.xr.getReferenceSpace());
+    if (pose) {
+      const m = new THREE.Matrix4().fromArray(pose.transform.matrix);
+      const o = new THREE.Vector3().setFromMatrixPosition(m);
+      const d = new THREE.Vector3(0, 0, -1).transformDirection(m);
+      ray = { origin: o, direction: d };
+    }
   }
-  if (st.group) st.group.visible = !placing;
-  showRefMarkers(!placing && !!(refs.A && refs.B));
-  if (st.reticle) {
-    st.reticle.userData.mat.color.setHex(m === 'pickA' ? COLORS.A : m === 'pickB' ? COLORS.B : COLORS.white);
-  }
-  const hasRefs = !!(refs.A && refs.B);
-  hint(text || (m === 'place' && refs.A ? MODE_TEXT.placeA : MODE_TEXT[m]));
-  $('arx-mark').hidden = !placing;
-  $('arx-mark').textContent = m === 'pickA' ? 'Marcar A aquí' : m === 'pickB' ? 'Marcar B aquí' : 'Colocar aquí';
-  $('arx-quick').hidden = !(m === 'pickA' || m === 'pickB');
-  $('arx-align').hidden = !(m === 'placed' && hasRefs);
-  $('arx-replace').hidden = m !== 'placed';
-  $('arx-lock').hidden = m !== 'placed';
-}
-function onSelect() {
-  if (!AR.session) return;
-  if (st.mode === 'placed') return;
-  const h = st.lastHit;
-  if (!h) { hint('Aún no se detecta el piso. Mueve el celular despacio apuntando al suelo.'); return; }
-  if (st.mode === 'place') {
-    const c = refs.A ? refs.A : modelCenter();
-    st.A = { x: c.x, y: floorY(), z: c.z };
-    st.R = { x: h.x, y: h.y, z: h.z };
-    st.thetaBase = cameraHeading() - Math.PI;
-    st.theta = st.thetaBase;
-    st.yOff = 0;
-    setLocked(false);
-    setMode('placed');
-    applyPose();
-  } else if (st.mode === 'pickA') {
-    st.tapA = h;
-    setMode('pickB');
-  } else if (st.mode === 'pickB') {
-    alignTwoPoints(st.tapA, h);
-  }
-}
-function alignTwoPoints(ra, rb) {
-  const A = refs.A, B = refs.B;
-  const dmx = B.x - A.x, dmz = B.z - A.z, drx = rb.x - ra.x, drz = rb.z - ra.z;
-  const lm = Math.hypot(dmx, dmz), lr = Math.hypot(drx, drz);
-  if (lr < 0.3) { hint('B quedó muy cerca de A (' + fmtCm(lr) + '). Toca de nuevo el punto B real.'); return; }
-  st.thetaBase = Math.atan2(drx, drz) - Math.atan2(dmx, dmz);
-  st.theta = st.thetaBase;
-  st.A = { x: (A.x + B.x) / 2, y: floorY(), z: (A.z + B.z) / 2 };
-  st.R = { x: (ra.x + rb.x) / 2, y: (ra.y + rb.y) / 2, z: (ra.z + rb.z) / 2 };
-  st.yOff = 0;
-  const diff = Math.abs(lr - lm);
-  setMode('placed', 'Alineado con A y B a escala 1:1. Diferencia entre distancias: ' + fmtCm(diff) +
-    (diff > 0.25 ? '. Es alta: revisa los puntos y pulsa «Alinear con A y B».' : '. Camina para recorrerlo.'));
-  setLocked(true);
-  applyPose();
-}
-function showTap(k, h) {
-  const m = makeMarker(COLORS[k], 0.8);
-  m.position.set(h.x, h.y + 0.005, h.z);
-  ctx.scene.add(m);
-  st.taps.push(m);
-}
-function clearTaps() {
-  for (const m of st.taps) ctx.scene.remove(m);
-  st.taps = [];
+  if (!ray) return;
+  const h = S.pickAt(null, null, ray);
+  const card = $('ar-card');
+  if (!h) { S.select(null); card.classList.remove('on'); return; }
+  const e = h.e; S.select(e);
+  const stt = STATES[e.state];
+  const lk = e.links.filter((l) => l.p === 'INSTALACION').map((l) => S.tasks.get(l.t)?.name).filter(Boolean);
+  card.innerHTML = '<b>' + (e.fam || e.cat) + '</b><div class="small" style="opacity:.8">' + (e.type || '') + ' · ' + e.D.name + '</div>'
+    + '<div class="ar-legend"><span><i style="background:' + stt.color + '"></i>' + stt.label + ' al ' + S.fmtDate(S.cut) + '</span></div>'
+    + (e.sIns ? '<div class="small" style="margin-top:4px">Instalación: ' + S.fmtDate(e.sIns) + ' → ' + S.fmtDate(e.fIns) + '</div>' : '<div class="small" style="margin-top:4px">' + (e.note || 'No se programa') + '</div>')
+    + (lk.length ? '<div class="small" style="opacity:.8;margin-top:2px">' + lk.slice(0, 2).join(' · ') + '</div>' : '');
+  card.classList.add('on');
 }
 
-/* gestos: un dedo mueve sobre el piso, dos dedos giran (escala bloqueada 1:1) */
+// gestos: un dedo mueve sobre el piso, dos dedos giran (escala bloqueada 1:1)
 function floorPoint(cx, cy) {
   if (!st.view || !st.proj || !st.R) return null;
-  const t = T3;
-  const inv = new t.Matrix4().fromArray(st.proj).invert();
-  const wm = new t.Matrix4().fromArray(st.view);
-  const nx = cx / window.innerWidth * 2 - 1, ny = 1 - cy / window.innerHeight * 2;
-  const o = new t.Vector3().setFromMatrixPosition(wm);
-  const d = new t.Vector3(nx, ny, 0.5).applyMatrix4(inv).applyMatrix4(wm).sub(o);
+  const inv = new THREE.Matrix4().fromArray(st.proj).invert(), wm = new THREE.Matrix4().fromArray(st.view);
+  const o = new THREE.Vector3().setFromMatrixPosition(wm);
+  const d = new THREE.Vector3(cx / innerWidth * 2 - 1, 1 - cy / innerHeight * 2, 0.5).applyMatrix4(inv).applyMatrix4(wm).sub(o);
   if (Math.abs(d.y) < 1e-6) return null;
-  const k = (st.R.y + st.yOff - o.y) / d.y;
-  if (k <= 0 || k > 200) return null;
+  const k = (st.R.y + st.yOff - o.y) / d.y; if (k <= 0 || k > 200) return null;
   return { x: o.x + d.x * k, z: o.z + d.z * k };
 }
 function wireGestures(el) {
-  const ptrs = new Map();
-  let drag = null, twist = null;
-  const angle = function () {
-    const p = Array.from(ptrs.values());
-    return Math.atan2(p[1].y - p[0].y, p[1].x - p[0].x);
-  };
-  const reset = function () {
-    drag = null; twist = null;
-    if (ptrs.size === 1) { const p = ptrs.values().next().value; drag = floorPoint(p.x, p.y); }
-    if (ptrs.size === 2) twist = angle();
-  };
-  el.addEventListener('pointerdown', function (e) {
-    if (st.mode !== 'placed' || st.locked) return;
-    try { el.setPointerCapture(e.pointerId); } catch (err) { /* sin captura */ }
-    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    reset();
+  const ptrs = new Map(); let drag = null, twist = null;
+  const ang = () => { const p = [...ptrs.values()]; return Math.atan2(p[1].y - p[0].y, p[1].x - p[0].x); };
+  const reset = () => { drag = null; twist = null; if (ptrs.size === 1) { const p = ptrs.values().next().value; drag = floorPoint(p.x, p.y); } if (ptrs.size === 2) twist = ang(); };
+  el.addEventListener('pointerdown', (e) => { if (st.mode !== 'placed' || !st.adjust) return; try { el.setPointerCapture(e.pointerId); } catch { /* */ } ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); reset(); });
+  el.addEventListener('pointermove', (e) => {
+    if (!ptrs.has(e.pointerId) || !st.adjust) return; ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (ptrs.size === 1 && drag) { const p = floorPoint(e.clientX, e.clientY); if (p) { st.R.x += p.x - drag.x; st.R.z += p.z - drag.z; drag = p; applyPose(); } }
+    else if (ptrs.size === 2) { const a = ang(); if (twist !== null) { st.theta -= wrapPi(a - twist); applyPose(); } twist = a; }
   });
-  el.addEventListener('pointermove', function (e) {
-    if (!ptrs.has(e.pointerId) || st.mode !== 'placed' || st.locked) return;
-    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (ptrs.size === 1 && drag) {
-      const p = floorPoint(e.clientX, e.clientY);
-      if (p) { st.R.x += p.x - drag.x; st.R.z += p.z - drag.z; drag = p; applyPose(); }
-    } else if (ptrs.size === 2) {
-      const a = angle();
-      if (twist !== null) {
-        let d = a - twist;
-        if (d > Math.PI) d -= 2 * Math.PI;
-        if (d < -Math.PI) d += 2 * Math.PI;
-        st.theta -= d;
-        applyPose();
-      }
-      twist = a;
-    }
-  });
-  const up = function (e) { if (ptrs.delete(e.pointerId)) reset(); };
-  el.addEventListener('pointerup', up);
-  el.addEventListener('pointercancel', up);
+  const up = (e) => { if (ptrs.delete(e.pointerId)) reset(); };
+  el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
 }
 
-/* ---------- iPhone / iPad: USDZ para AR Quick Look ---------- */
-let qlURL = null;
-function sectionCut() {
-  const se = $('sectionEnabled');
-  if (!se || !se.checked) return Infinity;
-  const parts = sceneParts();
-  for (const m of parts.group.children) {
-    const pl = m.material && m.material.clippingPlanes;
-    if (pl && pl.length) return pl[0].constant;
-  }
-  return Infinity;
-}
+// ------------------------------------------------------------------ iPhone / iPad: USDZ para AR Quick Look
 function crc32(u8) {
-  let table = crc32.t;
-  if (!table) {
-    table = crc32.t = new Uint32Array(256);
-    for (let i = 0; i < 256; i++) {
-      let c = i;
-      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-      table[i] = c >>> 0;
-    }
-  }
-  let c = 0xffffffff;
-  for (let i = 0; i < u8.length; i++) c = table[(c ^ u8[i]) & 0xff] ^ (c >>> 8);
-  return (c ^ 0xffffffff) >>> 0;
+  let t = crc32.t; if (!t) { t = crc32.t = new Uint32Array(256); for (let i = 0; i < 256; i++) { let c = i; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[i] = c >>> 0; } }
+  let c = 0xffffffff; for (let i = 0; i < u8.length; i++) c = t[(c ^ u8[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0;
 }
 function usdzBlob(name, data) {
-  const nameB = new TextEncoder().encode(name);
-  const crc = crc32(data);
-  const head = 30 + nameB.length;
-  let pad = (64 - (head % 64)) % 64;
-  if (pad > 0 && pad < 4) pad += 64;
-  const lh = new Uint8Array(head + pad);
-  const lv = new DataView(lh.buffer);
-  lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true); lv.setUint16(6, 0, true); lv.setUint16(8, 0, true);
-  lv.setUint16(10, 0, true); lv.setUint16(12, 0x21, true); lv.setUint32(14, crc, true);
-  lv.setUint32(18, data.length, true); lv.setUint32(22, data.length, true);
-  lv.setUint16(26, nameB.length, true); lv.setUint16(28, pad, true);
-  lh.set(nameB, 30);
+  const nb = new TextEncoder().encode(name), crc = crc32(data), head = 30 + nb.length;
+  let pad = (64 - (head % 64)) % 64; if (pad > 0 && pad < 4) pad += 64;
+  const lh = new Uint8Array(head + pad), lv = new DataView(lh.buffer);
+  lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true); lv.setUint16(12, 0x21, true); lv.setUint32(14, crc, true);
+  lv.setUint32(18, data.length, true); lv.setUint32(22, data.length, true); lv.setUint16(26, nb.length, true); lv.setUint16(28, pad, true); lh.set(nb, 30);
   if (pad) { lv.setUint16(head, 0x1986, true); lv.setUint16(head + 2, pad - 4, true); }
-  const cd = new Uint8Array(46 + nameB.length);
-  const cv = new DataView(cd.buffer);
-  cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true); cv.setUint16(8, 0, true);
-  cv.setUint16(10, 0, true); cv.setUint16(12, 0, true); cv.setUint16(14, 0x21, true); cv.setUint32(16, crc, true);
-  cv.setUint32(20, data.length, true); cv.setUint32(24, data.length, true); cv.setUint16(28, nameB.length, true);
-  cv.setUint16(30, 0, true); cv.setUint16(32, 0, true); cv.setUint16(34, 0, true); cv.setUint16(36, 0, true);
-  cv.setUint32(38, 0, true); cv.setUint32(42, 0, true);
-  cd.set(nameB, 46);
-  const end = new Uint8Array(22);
-  const ev = new DataView(end.buffer);
-  ev.setUint32(0, 0x06054b50, true); ev.setUint16(8, 1, true); ev.setUint16(10, 1, true);
-  ev.setUint32(12, cd.length, true); ev.setUint32(16, lh.length + data.length, true);
+  const cd = new Uint8Array(46 + nb.length), cv = new DataView(cd.buffer);
+  cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true); cv.setUint16(14, 0x21, true); cv.setUint32(16, crc, true);
+  cv.setUint32(20, data.length, true); cv.setUint32(24, data.length, true); cv.setUint16(28, nb.length, true); cd.set(nb, 46);
+  const end = new Uint8Array(22), ev = new DataView(end.buffer);
+  ev.setUint32(0, 0x06054b50, true); ev.setUint16(8, 1, true); ev.setUint16(10, 1, true); ev.setUint32(12, cd.length, true); ev.setUint32(16, lh.length + data.length, true);
   return new Blob([lh, data, cd, end], { type: 'model/vnd.usdz+zip' });
 }
-function buildUSDZ() {
-  const parts = sceneParts();
-  if (!parts || !parts.group) throw new Error('Espera a que cargue el modelo.');
-  const meshes = parts.group.children.filter(function (m) { return isModelMesh(m) && m.visible && m.geometry.drawRange.count > 0; });
-  if (!meshes.length) throw new Error('No hay elementos visibles para exportar.');
-  meshes.forEach(function (m) { m.updateMatrixWorld(); });
-  const f = floorY();
-  const yMin = f - 0.3, yMax = Math.min(f + 6, sectionCut());
-  const inBand = function (pos, a, b, c, ty) {
-    const cy = (pos[a * 3 + 1] + pos[b * 3 + 1] + pos[c * 3 + 1]) / 3 + ty;
-    return cy >= yMin && cy <= yMax;
-  };
-  const alive = function (q, a, b, c) {
-    a *= 3; b *= 3; c *= 3;
-    return !((q[a] === q[b] && q[a + 1] === q[b + 1] && q[a + 2] === q[b + 2]) ||
-      (q[b] === q[c] && q[b + 1] === q[c + 1] && q[b + 2] === q[c + 2]) ||
-      (q[a] === q[c] && q[a + 1] === q[c + 1] && q[a + 2] === q[c + 2]));
-  };
-  const quant = function (cell) {
-    return meshes.map(function (m) {
-      const p = m.geometry.attributes.position.array, q = new Int32Array(p.length);
-      for (let i = 0; i < p.length; i++) q[i] = Math.round(p[i] / cell);
-      return q;
-    });
-  };
-  /* simplificacion por rejilla: elimina el detalle menor que la celda (tornillos, aristas redondeadas) */
-  const CELLS = [0.01, 0.02, 0.03, 0.05, 0.08], TARGET = 350000, STRIDE = 7;
-  let cell = CELLS[0], Q = null;
-  for (let ci = 0; ci < CELLS.length; ci++) {
-    cell = CELLS[ci];
-    Q = quant(cell);
-    let est = 0;
-    meshes.forEach(function (m, mi) {
-      const idx = m.geometry.index.array, pos = m.geometry.attributes.position.array, ty = m.matrixWorld.elements[13];
-      const n = Math.floor(Math.min(m.geometry.drawRange.count, idx.length) / 3);
-      for (let t = 0; t < n; t += STRIDE) {
-        const a = idx[t * 3], b = idx[t * 3 + 1], c = idx[t * 3 + 2];
-        if (inBand(pos, a, b, c, ty) && alive(Q[mi], a, b, c)) est += STRIDE;
-      }
-    });
-    if (est <= TARGET) break;
+export function buildUSDZ(app = S) {
+  S = app;
+  const f = S.floorY, yMax = Math.min(f + 6, S.cutOn ? S.three.clipPlane.constant : Infinity);
+  const items = [];
+  for (const D of S.disc.values()) {
+    if (!D.mesh.visible) continue;
+    const g = D.mesh.geometry, n = g.drawRange.count, solidN = g.groups[0] ? g.groups[0].count : n;
+    const pos = g.attributes.position.array, lo = D.head.lo, sc = D.head.scale;
+    const W = new Float32Array(pos.length);
+    for (let i = 0; i < pos.length; i += 3) { W[i] = lo[0] + pos[i] * sc; W[i + 1] = lo[1] + pos[i + 1] * sc; W[i + 2] = lo[2] + pos[i + 2] * sc; }
+    items.push({ D, idx: g.index.array, n, solidN, W, col: D.col, nor: g.attributes.normal.array });
   }
-  const keyIndex = new Map();
-  const groups = [];
-  const tri = [];
-  let total = 0, x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
-  meshes.forEach(function (mesh, mi) {
-    const g = mesh.geometry, idx = g.index.array, col = g.attributes.color.array, pos = g.attributes.position.array;
-    const n = Math.floor(Math.min(g.drawRange.count, idx.length) / 3);
-    const e = mesh.matrixWorld.elements, q = Q[mi];
-    const op = Math.round(Math.min(1, Math.max(0.05, mesh.material.opacity == null ? 1 : mesh.material.opacity)) * 20);
-    const tg = new Int32Array(n);
-    for (let t = 0; t < n; t++) {
-      const a = idx[t * 3], b = idx[t * 3 + 1], c = idx[t * 3 + 2];
-      if (!inBand(pos, a, b, c, e[13]) || !alive(q, a, b, c)) { tg[t] = -1; continue; }
-      const key = ((Math.round(col[a * 3] * 31) * 32 + Math.round(col[a * 3 + 1] * 31)) * 32 + Math.round(col[a * 3 + 2] * 31)) * 32 + op;
-      let gi = keyIndex.get(key);
-      if (gi === undefined) {
-        gi = groups.length;
-        keyIndex.set(key, gi);
-        groups.push({ color: [col[a * 3], col[a * 3 + 1], col[a * 3 + 2]], opacity: op / 20, count: 0, fill: 0, list: null });
-      }
-      groups[gi].count++;
-      tg[t] = gi;
-      total++;
-      for (const v of [a, b, c]) {
-        const x = q[v * 3] * cell + e[12], z = q[v * 3 + 2] * cell + e[14];
-        if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z;
-      }
+  const inBand = (W, a, b, c) => { const cy = (W[a * 3 + 1] + W[b * 3 + 1] + W[c * 3 + 1]) / 3; return cy > f - 0.3 && cy < yMax; };
+  const quant = (it, cell) => { const Q = new Int32Array(it.W.length); for (let i = 0; i < Q.length; i++) Q[i] = Math.round(it.W[i] / cell); return Q; };
+  const alive = (Q, a, b, c) => { a *= 3; b *= 3; c *= 3;
+    return !((Q[a] === Q[b] && Q[a + 1] === Q[b + 1] && Q[a + 2] === Q[b + 2]) || (Q[b] === Q[c] && Q[b + 1] === Q[c + 1] && Q[b + 2] === Q[c + 2]) || (Q[a] === Q[c] && Q[a + 1] === Q[c + 1] && Q[a + 2] === Q[c + 2])); };
+  const CELLS = [0.01, 0.02, 0.03, 0.05, 0.08]; let cell = CELLS[0];
+  for (const c of CELLS) {
+    cell = c; let est = 0;
+    for (const it of items) { it.Q = quant(it, c); for (let t = 0; t < it.n; t += 21) { const a = it.idx[t], b = it.idx[t + 1], cc = it.idx[t + 2]; if (inBand(it.W, a, b, cc) && alive(it.Q, a, b, cc)) est += 7; } }
+    if (est < 350000) break;
+  }
+  const groups = new Map(); let total = 0, x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  const ghostOp = Math.max(1, Math.round(S.materials.matGhost.opacity * 20)), solidOp = Math.round(S.opacity * 20);
+  for (const it of items) {
+    for (let t = 0; t < it.n; t += 3) {
+      const a = it.idx[t], b = it.idx[t + 1], c = it.idx[t + 2];
+      if (!inBand(it.W, a, b, c) || !alive(it.Q, a, b, c)) continue;
+      const op = t >= it.solidN ? ghostOp : solidOp;
+      const key = it.col[a * 3] + ',' + it.col[a * 3 + 1] + ',' + it.col[a * 3 + 2] + ',' + op;
+      let gr = groups.get(key); if (!gr) { gr = { key, tris: [] }; groups.set(key, gr); }
+      gr.tris.push(it, a, b, c); total++;
+      for (const v of [a, b, c]) { const x = it.W[v * 3], z = it.W[v * 3 + 2]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z; }
     }
-    tri[mi] = tg;
-  });
-  if (!total) throw new Error('No queda geometría visible en este piso (revisa el corte y las disciplinas).');
-  if (total > 1200000) throw new Error('El modelo visible es demasiado pesado (' + fmtInt(total) + ' triángulos). Oculta disciplinas o activa el corte.');
-  for (const g of groups) g.list = new Uint32Array(g.count * 2);
-  tri.forEach(function (tg, mi) {
-    for (let t = 0; t < tg.length; t++) {
-      const gi = tg[t];
-      if (gi < 0) continue;
-      const g = groups[gi];
-      g.list[g.fill++] = mi;
-      g.list[g.fill++] = t;
-    }
-  });
-  /* origen en el centro de la planta y a nivel de piso terminado: Quick Look lo apoya en el suelo */
-  const ox = (x0 + x1) / 2, oz = (z0 + z1) / 2;
-  const stamp = meshes.map(function (m) { return new Int32Array(m.geometry.attributes.position.count); });
-  const remap = meshes.map(function (m) { return new Int32Array(m.geometry.attributes.position.count); });
-  const r2 = function (v) { return Math.round(v * 100) / 100; };
-  const out = [];
-  out.push('#usda 1.0\n(\n    customLayerData = {\n        string creator = "BIM 4D AR"\n    }\n    defaultPrim = "Obra"\n    metersPerUnit = 1\n    upAxis = "Y"\n)\n\n');
-  out.push('def Xform "Obra" (\n    kind = "component"\n)\n{\n    def Scope "Materiales"\n    {\n');
-  groups.forEach(function (g, gi) {
-    out.push('        def Material "M' + gi + '"\n        {\n' +
-      '            token outputs:surface.connect = </Obra/Materiales/M' + gi + '/Superficie.outputs:surface>\n' +
-      '            def Shader "Superficie"\n            {\n' +
-      '                uniform token info:id = "UsdPreviewSurface"\n' +
-      '                color3f inputs:diffuseColor = (' + round3(g.color[0]) + ', ' + round3(g.color[1]) + ', ' + round3(g.color[2]) + ')\n' +
-      '                float inputs:metallic = 0\n                float inputs:roughness = 0.85\n' +
-      '                float inputs:opacity = ' + g.opacity + '\n                token outputs:surface\n            }\n        }\n');
+  }
+  if (!total) throw new Error('No hay elementos visibles para exportar.');
+  if (total > 1200000) throw new Error('Demasiados elementos visibles (' + total + ' triángulos). Oculta especialidades o activa el corte.');
+  const ox = (x0 + x1) / 2, oz = (z0 + z1) / 2, r2 = (v) => Math.round(v * 100) / 100;
+  const lin = (v) => { v /= 255; return Math.round((v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)) * 1000) / 1000; };
+  const out = ['#usda 1.0\n(\n    defaultPrim = "Obra"\n    metersPerUnit = 1\n    upAxis = "Y"\n)\n\ndef Xform "Obra" (\n    kind = "component"\n)\n{\n    def Scope "Materiales"\n    {\n'];
+  const gl = [...groups.values()];
+  gl.forEach((g, gi) => {
+    const [r, gg, b, op] = g.key.split(',').map(Number); g.i = gi;
+    out.push('        def Material "M' + gi + '"\n        {\n            token outputs:surface.connect = </Obra/Materiales/M' + gi + '/S.outputs:surface>\n            def Shader "S"\n            {\n'
+      + '                uniform token info:id = "UsdPreviewSurface"\n                color3f inputs:diffuseColor = (' + lin(r) + ', ' + lin(gg) + ', ' + lin(b) + ')\n'
+      + '                float inputs:roughness = 0.85\n                float inputs:metallic = 0\n                float inputs:opacity = ' + (op / 20) + '\n                token outputs:surface\n            }\n        }\n');
   });
   out.push('    }\n');
-  const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
-  groups.forEach(function (g, gi) {
-    const pts = [], nrm = [], ind = [];
-    let nv = 0;
-    const gmn = [Infinity, Infinity, Infinity], gmx = [-Infinity, -Infinity, -Infinity];
-    for (let k = 0; k < g.list.length; k += 2) {
-      const mi = g.list[k], t = g.list[k + 1];
-      const geo = meshes[mi].geometry, idx = geo.index.array;
-      const nor = geo.attributes.normal ? geo.attributes.normal.array : null;
-      const e = meshes[mi].matrixWorld.elements, q = Q[mi];
-      const sm = stamp[mi], rm = remap[mi];
-      for (let c = 0; c < 3; c++) {
-        const v = idx[t * 3 + c];
-        if (sm[v] !== gi + 1) {
-          sm[v] = gi + 1;
-          rm[v] = nv++;
-          const x = r2(q[v * 3] * cell + e[12] - ox);
-          const y = r2(Math.max(0, q[v * 3 + 1] * cell + e[13] - f));
-          const z = r2(q[v * 3 + 2] * cell + e[14] - oz);
-          if (x < gmn[0]) gmn[0] = x; if (y < gmn[1]) gmn[1] = y; if (z < gmn[2]) gmn[2] = z;
-          if (x > gmx[0]) gmx[0] = x; if (y > gmx[1]) gmx[1] = y; if (z > gmx[2]) gmx[2] = z;
-          pts.push('(' + x + ',' + y + ',' + z + ')');
-          nrm.push(nor ? '(' + r2(nor[v * 3]) + ',' + r2(nor[v * 3 + 1]) + ',' + r2(nor[v * 3 + 2]) + ')' : '(0,1,0)');
+  for (const g of gl) {
+    const pts = [], nrm = [], ind = [], map = new Map(); let nv = 0;
+    for (let k = 0; k < g.tris.length; k += 4) {
+      const it = g.tris[k];
+      for (let j = 1; j <= 3; j++) {
+        const v = g.tris[k + j]; const key = it.D.d + v;
+        let id = map.get(key);
+        if (id === undefined) {
+          id = nv++; map.set(key, id);
+          pts.push('(' + r2(it.Q[v * 3] * cell - ox) + ',' + r2(Math.max(0, it.Q[v * 3 + 1] * cell - f)) + ',' + r2(it.Q[v * 3 + 2] * cell - oz) + ')');
+          nrm.push('(' + r2(it.nor[v * 3] / 127) + ',' + r2(it.nor[v * 3 + 1] / 127) + ',' + r2(it.nor[v * 3 + 2] / 127) + ')');
         }
-        ind.push(rm[v]);
+        ind.push(id);
       }
     }
-    for (let a = 0; a < 3; a++) { mn[a] = Math.min(mn[a], gmn[a]); mx[a] = Math.max(mx[a], gmx[a]); }
-    out.push('\n    def Mesh "G' + gi + '" (\n        prepend apiSchemas = ["MaterialBindingAPI"]\n    )\n    {\n' +
-      '        uniform bool doubleSided = 1\n' +
-      '        float3[] extent = [(' + gmn.join(', ') + '), (' + gmx.join(', ') + ')]\n' +
-      '        int[] faceVertexCounts = [' + new Array(ind.length / 3).fill('3').join(',') + ']\n' +
-      '        int[] faceVertexIndices = [' + ind.join(',') + ']\n' +
-      '        rel material:binding = </Obra/Materiales/M' + gi + '>\n' +
-      '        normal3f[] normals = [' + nrm.join(',') + '] (\n            interpolation = "vertex"\n        )\n' +
-      '        point3f[] points = [' + pts.join(',') + ']\n' +
-      '        uniform token subdivisionScheme = "none"\n    }\n');
-    g.list = null;
-  });
+    out.push('\n    def Mesh "G' + g.i + '" (\n        prepend apiSchemas = ["MaterialBindingAPI"]\n    )\n    {\n        uniform bool doubleSided = 1\n'
+      + '        int[] faceVertexCounts = [' + new Array(ind.length / 3).fill('3').join(',') + ']\n        int[] faceVertexIndices = [' + ind.join(',') + ']\n'
+      + '        rel material:binding = </Obra/Materiales/M' + g.i + '>\n        normal3f[] normals = [' + nrm.join(',') + '] (\n            interpolation = "vertex"\n        )\n'
+      + '        point3f[] points = [' + pts.join(',') + ']\n        uniform token subdivisionScheme = "none"\n    }\n');
+  }
   out.push('}\n');
   const data = new TextEncoder().encode(out.join(''));
-  return { blob: usdzBlob('obra.usda', data), triangles: total, cell: cell, size: [mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]] };
+  return { blob: usdzBlob('obra.usda', data), triangles: total, cell, size: [x1 - x0, z1 - z0] };
 }
-async function prepareQuickLook() {
-  const btn = $('arx-usdz');
-  btn.disabled = true;
-  $('arx-ql').hidden = true;
-  say('Preparando el modelo para AR…');
-  await new Promise(function (r) { setTimeout(r, 40); });
+let qlURL = null;
+async function prepareQuickLook(btn) {
+  btn.disabled = true; const m = $('ar-msg'); m.hidden = false; m.className = 'note'; m.textContent = 'Preparando el modelo para AR…';
+  await new Promise((r) => setTimeout(r, 50));
   try {
-    const res = buildUSDZ();
+    const res = buildUSDZ(S);
     if (qlURL) URL.revokeObjectURL(qlURL);
     qlURL = URL.createObjectURL(res.blob);
-    $('arx-ql').href = qlURL + '#allowsContentScaling=0';
-    $('arx-ql').hidden = false;
-    say('Listo: ' + fmtInt(res.triangles) + ' triángulos (detalle mínimo ' + Math.round(res.cell * 100) + ' cm) · ' +
-      (res.blob.size / 1048576).toFixed(1) + ' MB · planta de ' + res.size[0].toFixed(1) + ' × ' + res.size[2].toFixed(1) +
-      ' m. Toca «Abrir en AR» y apunta al piso: el centro del piso aparece donde toques; arrástralo y gíralo con los dedos para alinearlo con la obra.');
-  } catch (e) {
-    say(e.message);
-  } finally {
-    btn.disabled = false;
-  }
+    const a = document.createElement('a'); a.rel = 'ar'; a.href = qlURL + '#allowsContentScaling=0';
+    const img = document.createElement('img'); img.alt = 'Abrir en AR'; img.width = 240; img.height = 48;
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="240" height="48"><rect width="240" height="48" rx="10" fill="#3d8bfd"/><text x="120" y="30" font-family="system-ui,-apple-system" font-size="17" font-weight="700" fill="#fff" text-anchor="middle">Abrir en AR (1:1)</text></svg>');
+    a.appendChild(img);
+    m.innerHTML = 'Listo: ' + res.triangles.toLocaleString('es-PE') + ' triángulos · ' + (res.blob.size / 1048576).toFixed(1) + ' MB · detalle mínimo ' + Math.round(res.cell * 100) + ' cm. Toca el botón y apunta al piso.<br>';
+    m.appendChild(a);
+  } catch (e) { m.className = 'note warn'; m.textContent = e.message; }
+  btn.disabled = false;
 }
-
-/* ---------- arranque ---------- */
-function init() {
-  const arBtn = $('ar');
-  if (arBtn) { arBtn.textContent = 'AR en obra'; arBtn.title = 'Ver el modelo con la cámara del celular o tablet, a escala 1:1'; }
-  document.addEventListener('click', function (e) {
-    const b = e.target && e.target.closest ? e.target.closest('#ar') : null;
-    if (!b || !ctx.renderer) return;
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    openDialog();
-  }, true);
-  document.addEventListener('change', function (e) {
-    if (e.target && e.target.id === 'level') setTimeout(loadRefs, 60);
-  }, true);
-  let tries = 0;
-  const wait = setInterval(function () {
-    if (modelReady()) {
-      clearInterval(wait);
-      const a = parsePair(params.get('refA')), b = parsePair(params.get('refB'));
-      if (a && b) { refs.A = a; refs.B = b; saveRefs(); updateMarkers(); } else loadRefs();
-      if (params.get('modo') === 'ar') openDialog();
-    } else if (++tries > 360) clearInterval(wait);
-  }, 500);
-  setInterval(function () { if (markerRoot && markerRoot.visible && !AR.session) updateMarkers(); }, 1500);
-  checkXR();
-}
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-else init();
-
-window.__bimAR = { ctx: ctx, refs: refs, buildUSDZ: buildUSDZ, openDialog: openDialog, raycastModel: raycastModel };

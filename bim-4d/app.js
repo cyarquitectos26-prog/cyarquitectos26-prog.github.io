@@ -9,7 +9,7 @@ THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
 const $ = (id) => document.getElementById(id);
-const V = 'b13';
+const V = '2.0.0';
 const params = new URLSearchParams(location.search);
 const fmt = new Intl.NumberFormat('es-PE', { maximumFractionDigits: 2 });
 const fmtInt = new Intl.NumberFormat('es-PE');
@@ -802,7 +802,10 @@ async function main() {
     const [project, schedule] = await Promise.all([fetch('./data/project.json?v=' + V).then((r) => r.json()), fetch('./data/schedule.json?v=' + V).then((r) => r.json())]);
     S.project = project; S.schedule = schedule; S.floorY = project.floorY;
     for (const t of schedule.tasks) S.tasks.set(t.uid, t);
-    $('lvl-name').textContent = project.levelName;
+    $('lvl-sel').addEventListener('change', (e) => {
+      if (e.target.value === project.level) return;
+      location.href = './v1/?piso=' + e.target.value + (S.cut ? '&fecha=' + S.cut : '');
+    });
     const total = project.disciplines.reduce((a, d) => a + d.gz, 0); let got = 0;
     msg.textContent = 'Descargando ' + project.disciplines.length + ' especialidades (' + (total / 1048576).toFixed(0) + ' MB)';
     await Promise.all(project.disciplines.map((d) => loadDiscipline(d, project.level, (n) => { got += n; bar.style.width = Math.min(100, got / total * 100) + '%'; })));

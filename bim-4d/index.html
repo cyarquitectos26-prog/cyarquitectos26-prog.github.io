@@ -1,106 +1,187 @@
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#ffffff">
-  <link rel="icon" href="data:,">
-  <title>LAS-BAMBAS · Oficinas Las Bambas</title>
-  <script type="module" src="./ar.js?v=2"></script>
-  <script type="module" crossorigin src="./index-BOLZqqB0.js"></script>
-  <link rel="stylesheet" crossorigin href="./index-CiowdTMR.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0e1013">
+  <title>Oficinas Las Bambas · Visor BIM 4D · Piso 18</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%233d8bfd'/%3E%3Cpath d='M8 22V10l8-4 8 4v12l-8 4z' fill='none' stroke='white' stroke-width='2.2' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./app.css?v=2.0.0">
+  <script>
+    // Pisos 17 y 19: siguen en la versión anterior del visor (los modelos v2 entregados son del piso 18)
+    (function () { var q = new URLSearchParams(location.search), p = q.get('piso'); if (p && p !== '18' && /^\d+$/.test(p)) location.replace('./v1/' + location.search); })();
+  </script>
+  <script type="importmap">
+  {"imports":{
+    "three":"https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js",
+    "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.179.1/examples/jsm/",
+    "three-mesh-bvh":"https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.9.1/build/index.module.js"
+  }}
+  </script>
+  <script type="module" src="./app.js?v=2.0.0"></script>
 </head>
 <body>
-  <header class="top">
-    <h1><span id="project-code">LAS-BAMBAS</span> <span id="project-name">Oficinas Las Bambas</span></h1>
-    <button id="share">Abrir en celular · QR</button>
-    <button id="center" class="primary">Centrar</button>
-  </header>
-  <main>
-    <details class="panel layers" open>
-      <summary><h2>Capas del modelo</h2></summary>
-      <label>Nivel <select id="level" aria-label="Nivel"></select></label>
-      <fieldset id="disciplines"><legend class="sr">Disciplinas</legend></fieldset>
-      <label>Sistema <select id="systems"><option value="">Todos los sistemas</option></select></label>
-      <label>Categoría Revit <select id="categories"><option value="">Todas las categorías</option></select></label>
-      <label>Sector <select id="sectors"><option value="">Todos los sectores</option></select></label>
-      <label>Opacidad <input id="opacity" type="range" min="10" max="100" value="100"></label>
-      <label>Cielos rasos <select id="ceilings" aria-label="Cielos rasos">
-        <option value="curved">Mostrar curvos</option>
-        <option value="all">Mostrar todos</option>
-        <option value="hidden">Ocultar</option>
-      </select></label>
-      <label><input id="upperSlabs" type="checkbox"> Mostrar losa superior</label>
-      <label><input id="walls" type="checkbox" checked> Mostrar muros</label>
-      <label><input id="sectionEnabled" type="checkbox"> Corte horizontal</label>
-      <input id="section" aria-label="Altura de corte" type="range" min="0" max="100" value="55" hidden>
-      <p id="model-status" class="muted" role="status">Abriendo catálogo…</p>
-    </details>
-    <section class="workspace" aria-label="Recorrido y programación">
-      <section class="canvas-wrap">
-        <div id="viewport" aria-label="Modelo tridimensional de Las Bambas"></div>
-        <div class="tools">
-          <button id="orbit" aria-pressed="true">Isométrica</button>
-          <button id="walk" aria-pressed="false">Recorrido 1:1</button>
-          <button id="ar">AR en obra</button>
-          <button id="explode" aria-pressed="false">Separar</button>
-          <button id="xray" aria-pressed="false">Rayos X</button>
-        </div>
-        <div class="nav-controls">
-          <select id="rooms" aria-label="Habitación"><option value="">Habitaciones</option></select>
-          <button id="favorite">Guardar vista</button>
-          <button id="restore" disabled>Volver a vista</button>
-        </div>
-        <div id="movement" hidden>
-          <button data-move="left" aria-label="Caminar a la izquierda">←</button>
-          <button data-move="forward" aria-label="Caminar hacia adelante">↑</button>
-          <button data-move="back" aria-label="Caminar hacia atrás">↓</button>
-          <button data-move="right" aria-label="Caminar a la derecha">→</button>
-        </div>
-        <p class="view-hint" id="view-hint" role="status">Arrastra para orbitar · Pellizca para acercar</p>
-      </section>
-      <section class="planning panel">
-        <h2>Cronograma de obra</h2>
-        <div class="date-controls">
-          <label>Fecha de corte <input id="date" type="date"></label>
-          <input id="timeline" type="range" aria-label="Día de planificación" min="0" max="1" value="0">
-          <button id="play" aria-label="Reproducir cronograma">Reproducir</button>
-        </div>
-        <div class="planning-status">
-          <output id="schedule-status">Leyendo MS Project…</output>
-          <label><input id="show4d" type="checkbox" checked> Colores 4D</label>
-          <label><input id="onlyPlanned" type="checkbox" disabled> Acumulado al corte</label>
-        </div>
-        <p id="plan-status" class="plan-status" aria-live="polite"></p>
-        <p class="plan-legend">Gris azulado · futuro. Cian · en ventana. Violeta · fases restantes. Azul · ventana transcurrida. Ámbar · importación en ventana. Beige · importación transcurrida. Gris oscuro · sin vínculo.</p>
-        <div class="task-table" role="region" aria-label="Actividades programadas" tabindex="0">
-          <table><thead><tr><th>Actividad</th><th>Inicio</th><th>Fin</th><th>Ventana del plan</th></tr></thead><tbody id="tasks"></tbody></table>
-        </div>
-      </section>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-cam" viewBox="0 0 24 24"><path d="M4 8h3l2-2h6l2 2h3v11H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+  <symbol id="i-map" viewBox="0 0 24 24"><path d="M12 21s-6-5.7-6-11a6 6 0 0 1 12 0c0 5.3-6 11-6 11z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="10" r="2.2" fill="currentColor"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M14 14h2v2h-2zM18 18h2v2h-2zM14 18h2v2h-2zM18 14h2v2h-2z" fill="currentColor"/></symbol>
+  <symbol id="i-fit" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-ruler" viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2" stroke="currentColor" stroke-width="2"/></symbol>
+  <symbol id="i-full" viewBox="0 0 24 24"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M3 13l9 5 9-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 11v6M12 7.5v.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+</svg>
+
+<header class="bar">
+  <div class="brand"><b>LAS BAMBAS</b><span>Oficinas · <select id="lvl-sel" aria-label="Piso"><option value="18" selected>Piso 18</option><option value="17">Piso 17 (versión anterior)</option><option value="19">Piso 19 (versión anterior)</option></select> · BIM 4D</span></div>
+  <div class="search">
+    <svg class="icon"><use href="#i-search"/></svg>
+    <input id="q" type="search" placeholder="Buscar por tipo, familia, sistema, ambiente o ID Revit" autocomplete="off">
+    <div id="results" role="listbox"></div>
+  </div>
+  <div class="actions">
+    <button id="btn-map" title="Ubicar el modelo en el mapa satelital"><svg class="icon"><use href="#i-map"/></svg> <span>Ubicación</span></button>
+    <button id="btn-share" title="Compartir y código QR"><svg class="icon"><use href="#i-share"/></svg> <span>QR</span></button>
+    <button id="btn-ar" class="primary" title="Ver el modelo en la obra con la cámara"><svg class="icon"><use href="#i-cam"/></svg> AR en obra</button>
+  </div>
+</header>
+
+<main class="layout">
+  <aside id="p-layers" class="panel left" aria-label="Capas y filtros">
+    <section class="sec">
+      <h2>Colorear por</h2>
+      <div class="seg" id="color-mode">
+        <button data-v="4d" aria-pressed="true">Estado 4D</button>
+        <button data-v="disc" aria-pressed="false">Especialidad</button>
+        <button data-v="real" aria-pressed="false">Materiales</button>
+      </div>
+      <label class="field"><span>Elementos pendientes a la fecha</span>
+        <select id="pending-mode">
+          <option value="ghost">Translúcidos (fantasma)</option>
+          <option value="hide">Ocultos (avance acumulado)</option>
+          <option value="solid">Visibles en gris</option>
+        </select></label>
     </section>
-    <details class="panel inspector" open>
-      <summary><h2>Inspección</h2></summary>
-      <div id="selection"><p class="empty">Selecciona un elemento del modelo.</p></div>
-    </details>
-  </main>
-  <dialog id="share-dialog">
-    <h2>Recorrido desde el celular</h2>
-    <canvas id="share-qr" aria-label="Código QR del recorrido"></canvas>
-    <p id="share-status"></p>
-    <a id="share-link"></a>
-    <form method="dialog"><button class="primary">Cerrar</button></form>
-  </dialog>
-  <template id="observation-form">
-    <form class="observation">
-      <label>Observación <textarea name="text" maxlength="4000" required></textarea></label>
-      <label>Responsable <input name="responsible" maxlength="160"></label>
-      <label>Revisión <select name="review"><option>Pendiente</option><option>En revisión</option><option>Cerrada</option></select></label>
-      <label>Actividad <select name="taskUid"><option value="">Sin actividad</option></select></label>
-      <label>Fotografía <input name="photo" type="file" accept="image/jpeg" capture="environment"></label>
-      <button class="primary" type="submit">Registrar</button>
-      <button class="sync" type="button">Sincronizar pendientes</button>
-      <output class="observation-status"></output>
-    </form>
-  </template>
+    <section class="sec">
+      <h2>Especialidades <button class="ghost small" id="disc-all">Todas</button></h2>
+      <div id="disc-list"></div>
+    </section>
+    <section class="sec">
+      <h2>Vista</h2>
+      <div class="row"><label for="opacity">Opacidad</label><output id="opacity-o">100 %</output></div>
+      <input id="opacity" type="range" min="10" max="100" value="100">
+      <label class="check"><input id="cut-on" type="checkbox"> Corte horizontal</label>
+      <input id="cut" type="range" min="0" max="100" value="62" disabled aria-label="Altura de corte">
+      <label class="check"><input id="xray" type="checkbox"> Rayos X</label>
+      <label class="check"><input id="ceil" type="checkbox"> Mostrar cielos rasos</label>
+      <label class="check"><input id="upper" type="checkbox"> Mostrar losa superior (piso 19)</label>
+      <label class="check"><input id="edges" type="checkbox" checked> Realzar aristas</label>
+    </section>
+    <section class="sec">
+      <h2>Filtros</h2>
+      <label class="field"><span>Categoría Revit</span><select id="f-cat"><option value="">Todas</option></select></label>
+      <label class="field"><span>Sistema</span><select id="f-sys"><option value="">Todos</option></select></label>
+      <label class="field"><span>Vínculo con el cronograma</span>
+        <select id="f-link"><option value="">Todos</option><option value="BRIDGE">Puente 4D v6 (validado por regla)</option><option value="CONEXION">Heredado por conexión MEP</option><option value="ANFITRION">Heredado de su anfitrión (mamparas)</option><option value="REGLA_VISOR">Regla del visor (propuesta)</option><option value="EXIST">Existentes / no programados</option></select></label>
+      <button id="f-reset" class="ghost small">Limpiar filtros y mostrar todo</button>
+    </section>
+    <section class="sec">
+      <h2>Ambientes</h2>
+      <select id="rooms"><option value="">Ir a un ambiente…</option></select>
+    </section>
+    <section class="sec small muted" id="qa-box"></section>
+  </aside>
+
+  <section class="stage">
+    <div id="view" aria-label="Modelo 3D del piso 18"></div>
+    <div class="hud tl" role="toolbar" aria-label="Modo de vista">
+      <button data-mode="orbit" aria-pressed="true">3D</button>
+      <button data-mode="plan" aria-pressed="false">Planta</button>
+      <button data-mode="walk" aria-pressed="false">Recorrido 1:1</button>
+    </div>
+    <div class="hud tr" role="toolbar" aria-label="Herramientas">
+      <button id="t-fit" title="Encuadrar"><svg class="icon"><use href="#i-fit"/></svg></button>
+      <button id="t-measure" title="Medir distancia" aria-pressed="false"><svg class="icon"><use href="#i-ruler"/></svg></button>
+      <button id="t-full" title="Pantalla completa"><svg class="icon"><use href="#i-full"/></svg></button>
+    </div>
+    <div class="hud bl"><div class="legend float" id="legend-float"></div></div>
+    <div id="joystick"><i></i></div>
+    <div id="measure-label"></div>
+    <div id="tip"></div>
+    <div id="loading"><div class="box"><b>Cargando modelo BIM 4D…</b><div class="small muted" id="load-msg">Preparando</div><div class="prog"><div id="load-bar"></div></div></div></div>
+  </section>
+
+  <aside id="p-info" class="panel right" aria-label="Elemento seleccionado">
+    <div id="info"><p class="empty">Toca un elemento del modelo para ver su ficha, su estado al corte y sus actividades del cronograma.</p></div>
+  </aside>
+
+  <section class="timeline" aria-label="Simulación 4D">
+    <div class="date"><b id="cut-date">—</b><span id="cut-week">Fecha de corte</span></div>
+    <div class="track">
+      <input id="time" type="range" min="0" max="1" value="0" step="1" aria-label="Fecha de corte">
+      <div class="ticks" id="ticks"></div>
+    </div>
+    <div class="ctrls">
+      <button id="play" title="Reproducir la simulación"><svg class="icon"><use href="#i-play"/></svg></button>
+      <button id="today" title="Ir a hoy">Hoy</button>
+      <input id="cut-input" type="date" style="width:150px" aria-label="Elegir fecha">
+      <button id="acts-toggle" aria-expanded="false">Actividades</button>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="acts" id="acts"></div>
+  </section>
+
+  <nav class="tabs-m" aria-label="Paneles">
+    <button data-tab="p-layers"><svg class="icon"><use href="#i-layers"/></svg>Capas</button>
+    <button data-tab="acts"><svg class="icon"><use href="#i-clock"/></svg>Actividades</button>
+    <button data-tab="p-info"><svg class="icon"><use href="#i-info"/></svg>Elemento</button>
+    <button id="btn-ar-m" class="primary"><svg class="icon"><use href="#i-cam"/></svg>AR</button>
+  </nav>
+</main>
+
+<dialog id="dlg-share">
+  <header><h2>Compartir y abrir en el celular</h2><button class="ghost" data-close><svg class="icon"><use href="#i-close"/></svg></button></header>
+  <div class="body">
+    <p class="muted small">El código abre este piso con la misma fecha de corte, el mismo color y la ubicación geográfica guardada. Quien lo escanee en obra verá el modelo ya ubicado.</p>
+    <label class="check"><input type="checkbox" id="share-ar" checked> Abrir directamente en modo AR</label>
+    <canvas id="qr" width="236" height="236"></canvas>
+    <div class="link-box" id="share-link"></div>
+    <div id="share-geo" class="note"></div>
+  </div>
+  <footer><button id="share-copy">Copiar enlace</button><button id="share-print">Imprimir marcador</button><button class="primary" data-close>Listo</button></footer>
+</dialog>
+
+<dialog id="dlg-map" class="wide">
+  <header><h2>Ubicación real del modelo</h2><button class="ghost" data-close><svg class="icon"><use href="#i-close"/></svg></button></header>
+  <div class="body">
+    <div class="map-grid">
+      <div id="map"></div>
+      <div class="map-side">
+        <label class="field"><span>Buscar dirección o lugar</span><input id="geo-q" type="text" placeholder="Ej.: Av. El Derby 055, Surco"></label>
+        <div class="row"><button id="geo-search">Buscar</button><button id="geo-here">Mi ubicación</button></div>
+        <label class="field"><span>Latitud (centro del piso)</span><input id="geo-lat" type="number" step="0.0000001"></label>
+        <label class="field"><span>Longitud (centro del piso)</span><input id="geo-lon" type="number" step="0.0000001"></label>
+        <label class="field"><span>Rotación respecto al norte (°)</span><input id="geo-rot" type="number" step="0.1"></label>
+        <p class="small muted">Arrastra el punto azul para mover la planta y el punto blanco para girarla hasta que coincida con el edificio en la imagen satelital.</p>
+        <div class="row"><a id="geo-earth" target="_blank" rel="noopener">Ver en Google Earth</a></div>
+        <div id="geo-status" class="note" hidden></div>
+      </div>
+    </div>
+  </div>
+  <footer><button id="geo-clear" class="ghost">Quitar ubicación</button><button data-close>Cancelar</button><button id="geo-save" class="primary">Guardar ubicación</button></footer>
+</dialog>
+
+<dialog id="dlg-ar">
+  <header><h2>AR en obra</h2><button class="ghost" data-close><svg class="icon"><use href="#i-close"/></svg></button></header>
+  <div class="body" id="ar-intro"></div>
+  <footer id="ar-foot"></footer>
+</dialog>
+
+<div id="ar-ui" aria-live="polite"></div>
 </body>
 </html>
