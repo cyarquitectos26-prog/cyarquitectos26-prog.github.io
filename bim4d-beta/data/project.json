@@ -5,8 +5,8 @@
    "name": "Arquitectura",
    "color": "#c9c3b8",
    "count": 1227,
-   "tris": 565378,
-   "gz": 3948365
+   "tris": 732262,
+   "gz": 5378496
   },
   {
    "d": "IISS",
@@ -26,7 +26,7 @@
  "level": "18",
  "levelName": "Piso 18",
  "floorY": 65.0,
- "generated": "2026-11-08T18:33:15+00:00",
+ "generated": "2026-11-08T18:38:17+00:00",
  "source": "02_RVT_Parametrizados_v2 (Revit 2026) + BridgeElementoActividad_4D_v6",
  "rooms": [
   {
