@@ -9,7 +9,7 @@ THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
 const $ = (id) => document.getElementById(id);
-const V = '2.0.1';
+const V = '2.0.2';
 const params = new URLSearchParams(location.search);
 const fmt = new Intl.NumberFormat('es-PE', { maximumFractionDigits: 2 });
 const fmtInt = new Intl.NumberFormat('es-PE');

@@ -30,7 +30,7 @@ input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px}
 .brand{display:flex;flex-direction:column;line-height:1.1;min-width:0}
 .brand b{font-size:15px;letter-spacing:.08em}
 .brand span{color:var(--muted);font-size:12px;white-space:nowrap}
-.brand select{field-sizing:content;max-width:8.5ch;background:transparent;border:0;color:inherit;font:inherit;padding:0 2px;margin:0;cursor:pointer;-webkit-appearance:none;appearance:none;text-decoration:underline dotted;text-underline-offset:2px}
+.brand select{width:4.7em;background:transparent;border:0;color:inherit;font:inherit;padding:0 2px;margin:0;cursor:pointer;-webkit-appearance:none;appearance:none;text-decoration:underline dotted;text-underline-offset:2px}
 .brand select option{background:var(--panel);color:var(--ink)}
 .bar .search{flex:1;max-width:520px;position:relative}
 .bar .search input{padding-left:34px}
