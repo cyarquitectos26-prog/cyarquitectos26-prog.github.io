@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#ffffff">
   <link rel="icon" href="data:,">
   <title>DRRP BIM 4D · Oficinas Las Bambas</title>
-  <script type="module" crossorigin src="./index-BUbcrS-p.js"></script>
+  <script type="module" crossorigin src="./index-Pac3nxSZ.js"></script>
   <link rel="stylesheet" crossorigin href="./index-C1Y2q51S.css">
 </head>
 <body>
@@ -26,7 +26,11 @@
       <label>Categoría Revit <select id="categories"><option value="">Todas las categorías</option></select></label>
       <label>Sector <select id="sectors"><option value="">Todos los sectores</option></select></label>
       <label>Opacidad <input id="opacity" type="range" min="10" max="100" value="100"></label>
-      <label><input id="ceilings" type="checkbox"> Mostrar cielorrasos</label>
+      <label>Cielos rasos <select id="ceilings" aria-label="Cielos rasos">
+        <option value="curved">Mostrar curvos</option>
+        <option value="all">Mostrar todos</option>
+        <option value="hidden">Ocultar</option>
+      </select></label>
       <label><input id="upperSlabs" type="checkbox"> Mostrar losa superior</label>
       <label><input id="walls" type="checkbox" checked> Mostrar muros</label>
       <label><input id="sectionEnabled" type="checkbox"> Corte horizontal</label>
@@ -69,7 +73,7 @@
           <label><input id="onlyPlanned" type="checkbox" disabled> Acumulado al corte</label>
         </div>
         <p id="plan-status" class="plan-status" aria-live="polite"></p>
-        <p class="plan-legend">Gris azulado · futuro. Cian · en ventana. Violeta · fases restantes. Azul · ventana transcurrida. Gris oscuro · sin vínculo.</p>
+        <p class="plan-legend">Gris azulado · futuro. Cian · en ventana. Violeta · fases restantes. Azul · ventana transcurrida. Ámbar · importación en ventana. Beige · importación transcurrida. Gris oscuro · sin vínculo.</p>
         <div class="task-table" role="region" aria-label="Actividades programadas" tabindex="0">
           <table><thead><tr><th>Actividad</th><th>Inicio</th><th>Fin</th><th>Ventana del plan</th></tr></thead><tbody id="tasks"></tbody></table>
         </div>
