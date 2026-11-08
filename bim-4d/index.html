@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="icon" href="data:,">
+  <title>DRRP BIM 4D · Oficinas Las Bambas</title>
+  <script type="module" crossorigin src="./index-BUbcrS-p.js"></script>
+  <link rel="stylesheet" crossorigin href="./index-C1Y2q51S.css">
+</head>
+<body>
+  <header class="top">
+    <strong class="brand">DRRP</strong>
+    <h1>Oficinas Las Bambas</h1>
+    <span class="product">Visor BIM 4D</span>
+    <button id="share">Abrir en celular · QR</button>
+    <button id="center" class="primary">Centrar</button>
+  </header>
+  <main>
+    <details class="panel layers" open>
+      <summary><h2>Capas del modelo</h2></summary>
+      <label>Nivel <select id="level" aria-label="Nivel"></select></label>
+      <fieldset id="disciplines"><legend class="sr">Disciplinas</legend></fieldset>
+      <label>Sistema <select id="systems"><option value="">Todos los sistemas</option></select></label>
+      <label>Categoría Revit <select id="categories"><option value="">Todas las categorías</option></select></label>
+      <label>Sector <select id="sectors"><option value="">Todos los sectores</option></select></label>
+      <label>Opacidad <input id="opacity" type="range" min="10" max="100" value="100"></label>
+      <label><input id="ceilings" type="checkbox"> Mostrar cielorrasos</label>
+      <label><input id="upperSlabs" type="checkbox"> Mostrar losa superior</label>
+      <label><input id="walls" type="checkbox" checked> Mostrar muros</label>
+      <label><input id="sectionEnabled" type="checkbox"> Corte horizontal</label>
+      <input id="section" aria-label="Altura de corte" type="range" min="0" max="100" value="55" hidden>
+      <p id="model-status" class="muted" role="status">Abriendo catálogo…</p>
+    </details>
+    <section class="workspace" aria-label="Recorrido y programación">
+      <section class="canvas-wrap">
+        <div id="viewport" aria-label="Modelo tridimensional de Las Bambas"></div>
+        <div class="tools">
+          <button id="orbit" aria-pressed="true">Isométrica</button>
+          <button id="walk" aria-pressed="false">Recorrido 1:1</button>
+          <button id="ar">AR 1:1</button>
+          <button id="explode" aria-pressed="false">Separar</button>
+          <button id="xray" aria-pressed="false">Rayos X</button>
+        </div>
+        <div class="nav-controls">
+          <select id="rooms" aria-label="Habitación"><option value="">Habitaciones</option></select>
+          <button id="favorite">Guardar vista</button>
+          <button id="restore" disabled>Volver a vista</button>
+        </div>
+        <div id="movement" hidden>
+          <button data-move="left" aria-label="Caminar a la izquierda">←</button>
+          <button data-move="forward" aria-label="Caminar hacia adelante">↑</button>
+          <button data-move="back" aria-label="Caminar hacia atrás">↓</button>
+          <button data-move="right" aria-label="Caminar a la derecha">→</button>
+        </div>
+        <p class="view-hint" id="view-hint" role="status">Arrastra para orbitar · Pellizca para acercar</p>
+      </section>
+      <section class="planning panel">
+        <h2>Cronograma de obra</h2>
+        <div class="date-controls">
+          <label>Fecha de corte <input id="date" type="date"></label>
+          <input id="timeline" type="range" aria-label="Día de planificación" min="0" max="1" value="0">
+          <button id="play" aria-label="Reproducir cronograma">Reproducir</button>
+        </div>
+        <div class="planning-status">
+          <output id="schedule-status">Leyendo MS Project…</output>
+          <label><input id="show4d" type="checkbox" checked> Colores 4D</label>
+          <label><input id="onlyPlanned" type="checkbox" disabled> Acumulado al corte</label>
+        </div>
+        <p id="plan-status" class="plan-status" aria-live="polite"></p>
+        <p class="plan-legend">Gris azulado · futuro. Cian · en ventana. Violeta · fases restantes. Azul · ventana transcurrida. Gris oscuro · sin vínculo.</p>
+        <div class="task-table" role="region" aria-label="Actividades programadas" tabindex="0">
+          <table><thead><tr><th>Actividad</th><th>Inicio</th><th>Fin</th><th>Ventana del plan</th></tr></thead><tbody id="tasks"></tbody></table>
+        </div>
+      </section>
+    </section>
+    <details class="panel inspector" open>
+      <summary><h2>Inspección</h2></summary>
+      <div id="selection"><p class="empty">Selecciona un elemento del modelo.</p></div>
+    </details>
+  </main>
+  <dialog id="share-dialog">
+    <h2>Recorrido desde el celular</h2>
+    <canvas id="share-qr" aria-label="Código QR del recorrido"></canvas>
+    <p id="share-status"></p>
+    <a id="share-link"></a>
+    <form method="dialog"><button class="primary">Cerrar</button></form>
+  </dialog>
+  <template id="observation-form">
+    <form class="observation">
+      <label>Observación <textarea name="text" maxlength="4000" required></textarea></label>
+      <label>Responsable <input name="responsible" maxlength="160"></label>
+      <label>Revisión <select name="review"><option>Pendiente</option><option>En revisión</option><option>Cerrada</option></select></label>
+      <label>Actividad <select name="taskUid"><option value="">Sin actividad</option></select></label>
+      <label>Fotografía <input name="photo" type="file" accept="image/jpeg" capture="environment"></label>
+      <button class="primary" type="submit">Registrar</button>
+      <button class="sync" type="button">Sincronizar pendientes</button>
+      <output class="observation-status"></output>
+    </form>
+  </template>
+</body>
+</html>
