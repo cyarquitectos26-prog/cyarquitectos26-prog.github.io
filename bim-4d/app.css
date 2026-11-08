@@ -44,7 +44,7 @@ input[type=checkbox]{accent-color:var(--ink);width:16px;height:16px}
 .bar .search input:hover{border-color:#4a4a4a}
 .bar .search input:focus{background:#242424;border-color:#fff}
 .bar .search svg{position:absolute;left:12px;top:9px;color:#9a9a9a}
-#results{position:absolute;top:42px;left:0;right:0;background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r);box-shadow:var(--shadow);max-height:50vh;overflow:auto;display:none}
+#results{position:absolute;top:42px;left:0;right:0;background:var(--panel);color:var(--ink);border:1px solid var(--line-2);border-radius:var(--r);box-shadow:var(--shadow);max-height:50vh;overflow:auto;display:none}
 #results.on{display:block}
 #results button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);border-radius:0;background:none;font-weight:500}
 #results button:hover{background:var(--panel-2)}
