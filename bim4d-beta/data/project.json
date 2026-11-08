@@ -64,7 +64,7 @@
  "level": "18",
  "levelName": "Piso 18",
  "floorY": 65.0,
- "generated": "2026-11-08T18:55:24+00:00",
+ "generated": "2026-11-08T19:05:24+00:00",
  "source": "02_RVT_Parametrizados_v2 (Revit 2026) + BridgeElementoActividad_4D_v6",
  "rooms": [
   {
@@ -5244,10 +5244,11 @@
   "ARQ": {
    "CRITERIO": 1,
    "BRIDGE": 757,
-   "REGLA_VISOR": 463,
+   "REGLA_VISOR": 367,
    "simplificados": 270,
    "CONDICION_4D": 6,
-   "fuera_de_franja": 13
+   "fuera_de_franja": 13,
+   "ANFITRION": 96
   },
   "fuera_de_franja": [
    [
@@ -5384,6 +5385,328 @@
    "REGLA_VISOR": 170,
    "BRIDGE": 130,
    "simplificados": 53
-  }
+  },
+  "puente_sin_geometria": [
+   [
+    "ARQ",
+    1172583,
+    "Walls",
+    "Curtain Wall",
+    "CA-M-A_Mampara con marco de aluminio (h=2.30)",
+    "anfitrión: se dibuja con sus paneles y montantes"
+   ],
+   [
+    "ARQ",
+    2311907,
+    "Walls",
+    "Curtain Wall",
+    "CA-M-C_Mampara con marco de aluminio CF (h=2.10)",
+    "anfitrión: se dibuja con sus paneles y montantes"
+   ],
+   [
+    "ARQ",
+    2359152,
+    "Walls",
+    "Curtain Wall",
+    "M-27_Mampara con marco de aluminio (h=2.30)",
+    "anfitrión: se dibuja con sus paneles y montantes"
+   ],
+   [
+    "ARQ",
+    2359158,
+    "Walls",
+    "Curtain Wall",
+    "M-26_Mampara con marco de aluminio (h=2.30)",
+    "anfitrión: se dibuja con sus paneles y montantes"
+   ],
+   [
+    "ARQ",
+    2359168,
+    "Walls",
+    "Curtain Wall",
+    "M-07_Mampara con marco de aluminio (h=2.30)",
+    "anfitrión: se dibuja con sus paneles y montantes"
+   ],
+   [
+    "ARQ",
+    2359182,
+    "Walls",
+    "Curtain Wall",
+    "M-28_Mampara con marco de aluminio (h=2.30)",
+    "anfitrión: se dibuja con sus paneles y montantes"
+   ],
+   [
+    "ARQ",
+    2359192,
+    "Walls",
+    "Curtain Wall",
+    "PV-01_Mampara con marco de aluminio (h=2.30) 2",
+    "anfitrión: se dibuja con sus paneles y montantes"
+   ],
+   [
+    "ARQ",
+    2359197,
+    "Walls",
+    "Curtain Wall",
+    "M-23_Mampara con marco de aluminio (h=2.30) 2",
+    "anfitrión: se dibuja con sus paneles y montantes"
+   ],
+   [
+    "ARQ",
+    2359216,
+    "Walls",
+    "Curtain Wall",
+    "M-06_Mampara con marco de aluminio (h=2.30)",
+    "anfitrión: se dibuja con sus paneles y montantes"
+   ],
+   [
+    "ARQ",
+    2359226,
+    "Walls",
+    "Curtain Wall",
+    "M-23_Mampara con marco de aluminio (h=2.30)",
+    "anfitrión: se dibuja con sus paneles y montantes"
+   ],
+   [
+    "ARQ",
+    2359234,
+    "Walls",
+    "Curtain Wall",
+    "PV-02_Mampara con marco de aluminio (h=2.30) 2",
+    "anfitrión: se dibuja con sus paneles y montantes"
+   ],
+   [
+    "ARQ",
+    2359250,
+    "Walls",
+    "Curtain Wall",
+    "M-24_Mampara con marco de aluminio (h=2.30)",
+    "anfitrión: se dibuja con sus paneles y montantes"
+   ],
+   [
+    "ARQ",
+    2389470,
+    "Walls",
+    "Curtain Wall",
+    "M-11_Mampara con marco de aluminio (h=2.30)",
+    "anfitrión: se dibuja con sus paneles y montantes"
+   ],
+   [
+    "ARQ",
+    2443444,
+    "Walls",
+    "Curtain Wall",
+    "CA-M-C_Mampara con marco de aluminio CF (h=2.10)",
+    "anfitrión: se dibuja con sus paneles y montantes"
+   ],
+   [
+    "ARQ",
+    2443709,
+    "Walls",
+    "Curtain Wall",
+    "CA-M-C_Mampara con marco de aluminio CF (h=2.10)",
+    "anfitrión: se dibuja con sus paneles y montantes"
+   ],
+   [
+    "ACI",
+    1147494,
+    "PipeFitting",
+    "Adaptador Victaulic",
+    "Standard",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "ACI",
+    1147526,
+    "PipeFitting",
+    "Adaptador Victaulic",
+    "Standard",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "ACI",
+    1161350,
+    "PipeFitting",
+    "Adaptador Victaulic",
+    "Standard",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "ACI",
+    1161352,
+    "PipeFitting",
+    "Adaptador Victaulic",
+    "Standard",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "ACI",
+    1161416,
+    "PipeFitting",
+    "Adaptador Victaulic",
+    "Standard",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "ACI",
+    1161418,
+    "PipeFitting",
+    "Adaptador Victaulic",
+    "Standard",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "ACI",
+    1161582,
+    "PipeFitting",
+    "Adaptador Victaulic",
+    "Standard",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "ACI",
+    1161584,
+    "PipeFitting",
+    "Adaptador Victaulic",
+    "Standard",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "ACI",
+    1250202,
+    "PipeFitting",
+    "Adaptador Victaulic",
+    "Standard",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "ACI",
+    1250204,
+    "PipeFitting",
+    "Adaptador Victaulic",
+    "Standard",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "ACI",
+    1268127,
+    "PipeFitting",
+    "Adaptador Victaulic",
+    "Standard",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "ACI",
+    1268129,
+    "PipeFitting",
+    "Adaptador Victaulic",
+    "Standard",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "ACI",
+    1365609,
+    "PipeFitting",
+    "Adaptador Victaulic",
+    "Standard",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "ACI",
+    1365611,
+    "PipeFitting",
+    "Adaptador Victaulic",
+    "Standard",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "ACI",
+    1409148,
+    "PipeFitting",
+    "Adaptador Victaulic",
+    "Standard",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "ACI",
+    1409150,
+    "PipeFitting",
+    "Adaptador Victaulic",
+    "Standard",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "ARQ",
+    2359235,
+    "CurtainWallPanels",
+    "Panel de sistema",
+    "Acristalado",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "ARQ",
+    1174024,
+    "Walls",
+    "Basic Wall",
+    "T-RH-01_Drywall RH. Ambas caras. e=12cm",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "ARQ",
+    2229360,
+    "Walls",
+    "Basic Wall",
+    "T-RH-01_Drywall RH. Ambas caras. e=12cm",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "IIMM",
+    1941986,
+    "FlexDuctCurves",
+    "Flex Duct Round",
+    "Flex - Round",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "IIMM",
+    1942924,
+    "FlexDuctCurves",
+    "Flex Duct Round",
+    "Flex - Round",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "IIMM",
+    1952116,
+    "FlexDuctCurves",
+    "Flex Duct Round",
+    "Flex - Redondo",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "IIMM",
+    1954416,
+    "FlexDuctCurves",
+    "Flex Duct Round",
+    "Flex - Redondo",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "IIMM",
+    1997777,
+    "FlexDuctCurves",
+    "Flex Duct Round",
+    "Flex - Redondo",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ],
+   [
+    "IIMM",
+    2000875,
+    "FlexDuctCurves",
+    "Flex Duct Round",
+    "Flex - Redondo",
+    "no existe en el modelo v2 (eliminado o reemplazado)"
+   ]
+  ]
  }
 }
