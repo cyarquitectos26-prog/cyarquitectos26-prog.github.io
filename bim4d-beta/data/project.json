@@ -6,7 +6,17 @@
    "color": "#c9c3b8",
    "count": 1227,
    "tris": 732262,
-   "gz": 5378496
+   "gz": 5378496,
+   "src": "Revit 2026 (RVT v2)"
+  },
+  {
+   "d": "IIEE",
+   "name": "Eléctricas",
+   "color": "#f2b134",
+   "count": 451,
+   "tris": 56492,
+   "gz": 302104,
+   "src": "IFC federado v2"
   },
   {
    "d": "IISS",
@@ -14,7 +24,35 @@
    "color": "#3fa7d6",
    "count": 807,
    "tris": 283130,
-   "gz": 2136197
+   "gz": 2136197,
+   "src": "Revit 2026 (RVT v2)"
+  },
+  {
+   "d": "IIMM",
+   "name": "Mecánicas (HVAC)",
+   "color": "#59c3a3",
+   "count": 2835,
+   "tris": 831971,
+   "gz": 5357603,
+   "src": "IFC federado v2"
+  },
+  {
+   "d": "ACI",
+   "name": "Agua contra incendio",
+   "color": "#e4572e",
+   "count": 1580,
+   "tris": 620534,
+   "gz": 3785746,
+   "src": "IFC federado v2"
+  },
+  {
+   "d": "DATA",
+   "name": "Comunicaciones",
+   "color": "#9b7ede",
+   "count": 300,
+   "tris": 183630,
+   "gz": 1152315,
+   "src": "IFC federado v2"
   }
  ],
  "anchor": [
@@ -26,7 +64,7 @@
  "level": "18",
  "levelName": "Piso 18",
  "floorY": 65.0,
- "generated": "2026-11-08T18:38:17+00:00",
+ "generated": "2026-11-08T18:55:24+00:00",
  "source": "02_RVT_Parametrizados_v2 (Revit 2026) + BridgeElementoActividad_4D_v6",
  "rooms": [
   {
@@ -5211,8 +5249,141 @@
    "CONDICION_4D": 6,
    "fuera_de_franja": 13
   },
+  "fuera_de_franja": [
+   [
+    "IIEE",
+    1505871,
+    "Electrical Fixtures",
+    "Caja de Pase en Techo",
+    -7.15
+   ],
+   [
+    "IIEE",
+    1506637,
+    "Electrical Fixtures",
+    "Caja de Pase en Techo",
+    -7.15
+   ],
+   [
+    "IIEE",
+    1506678,
+    "Electrical Fixtures",
+    "Caja de Pase en Techo",
+    -7.15
+   ],
+   [
+    "IIEE",
+    960924,
+    "Electrical Fixtures",
+    "Tomacorriente Estabilizado",
+    108.75
+   ],
+   [
+    "IIEE",
+    963245,
+    "Electrical Fixtures",
+    "Tomacorriente Estabilizado",
+    108.75
+   ],
+   [
+    "ACI",
+    1066540,
+    "Sprinklers",
+    "RociadorContraIncendio_Pendent",
+    -0.01
+   ],
+   [
+    "ACI",
+    1073151,
+    "Sprinklers",
+    "RociadorContraIncendio_Pendent",
+    -0.01
+   ],
+   [
+    "ACI",
+    1073228,
+    "Sprinklers",
+    "RociadorContraIncendio_Pendent",
+    -0.01
+   ],
+   [
+    "ACI",
+    1081457,
+    "Sprinklers",
+    "RociadorContraIncendio_Pendent",
+    -0.01
+   ],
+   [
+    "ACI",
+    1082410,
+    "Sprinklers",
+    "RociadorContraIncendio_Pendent",
+    -0.01
+   ],
+   [
+    "ACI",
+    1082431,
+    "Sprinklers",
+    "RociadorContraIncendio_Pendent",
+    -0.01
+   ],
+   [
+    "ACI",
+    1084994,
+    "Sprinklers",
+    "RociadorContraIncendio_Pendent",
+    -0.01
+   ],
+   [
+    "ACI",
+    1087476,
+    "Sprinklers",
+    "RociadorContraIncendio_Pendent",
+    -0.01
+   ],
+   [
+    "ACI",
+    1087501,
+    "Sprinklers",
+    "RociadorContraIncendio_Pendent",
+    -0.01
+   ],
+   [
+    "ACI",
+    1429445,
+    "Sprinklers",
+    "RociadorContraIncendio_Pendent",
+    -0.01
+   ],
+   [
+    "ACI",
+    1087504,
+    "Pipe Fittings",
+    "Reductor Tipo Campana",
+    0.03
+   ]
+  ],
+  "IIEE": {
+   "bridge_fuera_de_franja": 5,
+   "BRIDGE": 451
+  },
   "IISS": {
    "BRIDGE": 807
+  },
+  "IIMM": {
+   "BRIDGE": 2809,
+   "simplificados": 91,
+   "REGLA_VISOR": 26
+  },
+  "ACI": {
+   "bridge_fuera_de_franja": 11,
+   "BRIDGE": 1580,
+   "simplificados": 85
+  },
+  "DATA": {
+   "REGLA_VISOR": 170,
+   "BRIDGE": 130,
+   "simplificados": 53
   }
  }
 }

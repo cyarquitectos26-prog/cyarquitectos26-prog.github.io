@@ -9,7 +9,7 @@ THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
 const $ = (id) => document.getElementById(id);
-const V = 'b9';
+const V = 'b10';
 const params = new URLSearchParams(location.search);
 const fmt = new Intl.NumberFormat('es-PE', { maximumFractionDigits: 2 });
 const fmtInt = new Intl.NumberFormat('es-PE');
@@ -305,7 +305,8 @@ S.setCut = (on, t) => { S.cutOn = on; if (t != null) S.cutT = t; $('cut-on').che
 // ------------------------------------------------------------------ cámara
 function fit(box = S.bounds, iso = true) {
   const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
-  const r = Math.max(s.x, s.z) * 0.62 + 4;
+  const asp = Math.max(0.35, (view.clientWidth || 1) / (view.clientHeight || 1));
+  const r = (Math.max(s.x, s.z) * 0.62 + 4) * Math.max(1, 1.25 / asp);
   controls.target.copy(c);
   if (iso) camera.position.set(c.x + r * 0.75, c.y + r * 0.85, c.z + r * 0.95);
   else camera.position.set(c.x, c.y + r * 1.4, c.z + 0.01);
@@ -421,7 +422,7 @@ export function pickAt(ndc, cam = activeCam, rayOverride = null) {
 }
 S.pickAt = pickAt;
 let downAt = null;
-renderer.domElement.addEventListener('pointerdown', (e) => { downAt = [e.clientX, e.clientY]; });
+renderer.domElement.addEventListener('pointerdown', (e) => { downAt = [e.clientX, e.clientY]; if (matchMedia('(max-width:860px)').matches) document.querySelectorAll('.panel.open').forEach((p) => p.classList.remove('open')); });
 renderer.domElement.addEventListener('pointerup', (e) => {
   if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 6) return;
   const r = renderer.domElement.getBoundingClientRect();
@@ -796,7 +797,9 @@ async function main() {
       + '<dl class="kv"><dt>Puente 4D v6</dt><dd>' + fmtInt.format(cnt.BRIDGE) + '</dd><dt>Por conexión MEP</dt><dd>' + fmtInt.format(cnt.CONEXION) + '</dd>'
       + '<dt>Regla del visor</dt><dd>' + fmtInt.format(cnt.REGLA_VISOR) + ' <span class="muted">(propuesta)</span></dd><dt>Existentes</dt><dd>' + fmtInt.format(cnt.EXIST) + '</dd>'
       + '<dt>Sin fecha</dt><dd><b>' + fmtInt.format(cnt.SIN) + '</b></dd></dl>'
-      + '<p class="small muted">Fuente: ' + esc(project.source) + ' · generado ' + esc((project.generated || '').slice(0, 16).replace('T', ' ')) + ' UTC. Sin DWG importados ni geometría «Light Source» de luminarias.</p>';
+      + '<p class="small muted">Fuentes: ' + project.disciplines.map((d) => esc(d.d) + ' · ' + esc(d.src || '')).join('; ') + '. Generado ' + esc((project.generated || '').slice(0, 16).replace('T', ' ')) + ' UTC. Sin DWG importados ni geometría «Light Source» de luminarias.</p>'
+      + ((q.fuera_de_franja || []).length ? '<details><summary class="small" style="cursor:pointer">Revisión BIM: ' + q.fuera_de_franja.length + ' elementos con fecha están modelados fuera de la cota del piso 18 y no se dibujan</summary><ul class="small" style="padding-left:16px">'
+        + q.fuera_de_franja.map((x) => '<li>' + esc(x[0]) + ' · ID ' + esc(x[1]) + ' · ' + esc(x[3] || x[2]) + ' · cota ' + esc(x[4]) + ' m</li>').join('') + '</ul></details>' : '');
     // tareas pesadas en segundo plano: BVH para selección y aristas
     const idle = window.requestIdleCallback || ((f) => setTimeout(f, 60));
     if (!matchMedia('(pointer:coarse)').matches) for (const D of S.disc.values()) idle(() => { ensureBVH(D); invalidate(); });

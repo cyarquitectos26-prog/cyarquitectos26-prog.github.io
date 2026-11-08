@@ -1,7 +1,7 @@
 // AR en obra: WebXR (Android/ARCore) con colocación por geolocalización + brújula, ajuste fino y controles;
 // iPhone/iPad: AR Quick Look (USDZ generado con lo que se ve, escala fija 1:1).
-import { anchorOf, latLonToENU, enuToLatLon, earthUrl } from './geo.js?v=b9';
-import { STATES } from './app.js?v=b9';
+import { anchorOf, latLonToENU, enuToLatLon, earthUrl } from './geo.js?v=b10';
+import { STATES } from './app.js?v=b10';
 
 const $ = (id) => document.getElementById(id);
 const rad = (d) => d * Math.PI / 180, deg = (r) => r * 180 / Math.PI;
@@ -42,7 +42,7 @@ export async function openAR(app) {
   body.innerHTML = html;
   foot.innerHTML = '';
   const mk = (txt, cls, fn) => { const b = document.createElement('button'); b.textContent = txt; if (cls) b.className = cls; b.onclick = fn; foot.appendChild(b); return b; };
-  mk('Ubicar en el mapa', '', async () => { dlg.close(); const m = await import('./geo.js?v=b9'); m.openMapEditor(S); });
+  mk('Ubicar en el mapa', '', async () => { dlg.close(); const m = await import('./geo.js?v=b10'); m.openMapEditor(S); });
   if (xrOk) mk('Iniciar AR', 'primary', () => startXR());
   else if (isIOS || quickLook) { const b = mk('Preparar modelo', 'primary', () => prepareQuickLook(b)); }
   else mk('Mostrar QR', 'primary', () => { dlg.close(); $('btn-share').click(); });
@@ -100,6 +100,7 @@ function buildUI() {
     + '</div>'
     + '<div id="ar-card" class="ui"></div>'
     + '<div class="ar-bottom ui"><div class="ar-actions" id="ar-actions"></div>'
+    + '<div class="ar-quick" id="ar-quick"><label>Corte<input type="range" id="ar-q-cut" min="0" max="100"></label><label>Transparencia<input type="range" id="ar-q-op" min="0" max="90"></label></div>'
     + '<div class="ar-sheet" id="ar-s-layers"><h3>Especialidades</h3><div class="ar-chips" id="ar-disc"></div></div>'
     + '<div class="ar-sheet" id="ar-s-4d"><h3>Simulación 4D</h3><div class="row"><b id="ar-date"></b><button class="ar-btn" id="ar-play">▶ Reproducir</button><button class="ar-btn" id="ar-today">Hoy</button></div><input type="range" id="ar-time"><div class="ar-legend" id="ar-legend"></div></div>'
     + '<div class="ar-sheet" id="ar-s-view"><h3>Vista</h3>'
@@ -121,6 +122,7 @@ function buildUI() {
     for (const kk in sheets) { $(sheets[kk]).classList.toggle('on', kk === k); $('ar-b-' + kk).classList.toggle('on', kk === k); }
     st.adjust = k === 'adjust';
     if (k) $('ar-card').classList.remove('on');
+    $('ar-quick').classList.toggle('on', !k && st.mode === 'placed');
   }
   st.toggleSheet = toggleSheet;
   // especialidades
@@ -164,6 +166,11 @@ function buildUI() {
     st.R.x += v[0] * d; st.R.z += v[1] * d; applyPose();
   });
   $('ar-save').onclick = saveAdjust;
+  // barra rápida (como en el video): corte y transparencia siempre a mano
+  $('ar-q-cut').value = S.cutOn ? Math.round(S.cutT * 100) : 100;
+  $('ar-q-cut').oninput = (e) => { const v = +e.target.value; S.setCut(v < 100, v / 100); $('ar-cut-on').checked = v < 100; $('ar-cut').value = v; };
+  $('ar-q-op').value = Math.round((1 - S.opacity) * 100);
+  $('ar-q-op').oninput = (e) => { const o = 1 - (+e.target.value) / 100; S.setOpacity(o); $('ar-op').value = Math.round(o * 100); $('ar-op-o').textContent = Math.round(o * 100) + ' %'; };
   $('ar-replace').onclick = () => setMode(S.georef ? 'locate' : 'manual');
   wireGestures($('ar-touch'));
   if (!st.hooked) {
@@ -264,6 +271,7 @@ function setMode(m) {
   if (m === 'locate') { hint(MODES.locate, 'Sostén el celular vertical, con la cámara hacia adelante.'); actions([['Colocar por GPS ahora', () => placeByGeo(true), 'primary'], ['Colocar a mano', () => setMode('manual')]]); }
   else if (m === 'manual') { hint(MODES.manual, S.georef ? '' : 'Consejo: guarda la ubicación en el mapa para que el modelo aparezca solo.'); actions([['Colocar aquí', () => onSelect(), 'primary']].concat(S.georef ? [['Usar GPS', () => setMode('locate')]] : [])); }
   else { hint('Modelo a escala 1:1. Camina para recorrerlo.', 'Toca un elemento para ver su ficha. ✥ para ajustar la posición.'); actions([]); }
+  const q = $('ar-quick'); if (q) q.classList.toggle('on', m === 'placed' && !st.sheet);
   updateStatus();
 }
 
