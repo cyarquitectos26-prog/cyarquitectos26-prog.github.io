@@ -47,7 +47,7 @@ input[type=checkbox]{accent-color:var(--ink);width:16px;height:16px}
 #results button:hover{background:var(--panel-2)}
 #results button small{display:block;color:var(--muted);font-weight:400}
 .bar .actions{display:flex;gap:8px;margin-left:auto}
-.bar .actions button{border-radius:999px;padding:.4rem .95rem}
+.bar .actions button{border-radius:999px;padding:.4rem .95rem;white-space:nowrap}
 .cut-chip{display:flex;align-items:center;gap:6px;padding:.25rem .6rem;border:1px solid var(--line-2);border-radius:999px;color:var(--ink-2);font-size:12.5px;white-space:nowrap}
 .cut-chip b{color:var(--ink)}
 
@@ -207,6 +207,11 @@ dialog.wide{width:min(1100px,96vw)}
   .bar{height:52px;gap:8px}
   .bar .search{display:none}
   .bar .actions button:not(.primary) span{display:none}
+  .bar .actions{gap:6px}
+  .bar .actions button:not(.primary){width:38px;height:38px;min-height:38px;padding:0;display:grid;place-items:center}
+  .bar .actions button.primary{min-height:38px;padding:.3rem .85rem}
+  .brand b{letter-spacing:.16em}
+  .hide-m{display:none}
   .layout{inset:52px 0 0 0;grid-template-columns:1fr;grid-template-rows:1fr auto auto;grid-template-areas:"stage" "time" "tabs"}
   .panel.left,.panel.right{position:fixed;left:0;right:0;bottom:calc(58px + var(--safe-b));max-height:62vh;border:0;border-radius:20px 20px 0 0;box-shadow:var(--shadow);transform:translateY(110%);transition:transform .25s;z-index:20}
   .panel.open{transform:none}

@@ -40,9 +40,9 @@
    "d": "ACI",
    "name": "Agua contra incendio",
    "color": "#e4572e",
-   "count": 1580,
-   "tris": 620534,
-   "gz": 1053802,
+   "count": 1579,
+   "tris": 619356,
+   "gz": 1088846,
    "src": "IFC federado v2"
   },
   {
@@ -64,7 +64,7 @@
  "level": "18",
  "levelName": "Piso 18",
  "floorY": 65.0,
- "generated": "2026-11-08T19:11:54+00:00",
+ "generated": "2026-11-08T20:42:39+00:00",
  "source": "02_RVT_Parametrizados_v2 (Revit 2026) + BridgeElementoActividad_4D_v6",
  "rooms": [
   {
@@ -5376,10 +5376,21 @@
    "simplificados": 91,
    "REGLA_VISOR": 26
   },
+  "fuera_de_planta": [
+   [
+    "ACI",
+    1217925,
+    "Sprinklers",
+    "RociadorContraIncendio_Pendent",
+    55.6,
+    45.7
+   ]
+  ],
   "ACI": {
    "bridge_fuera_de_franja": 11,
-   "BRIDGE": 1580,
-   "simplificados": 85
+   "BRIDGE": 1579,
+   "simplificados": 84,
+   "fuera_de_planta": 1
   },
   "DATA": {
    "BRIDGE": 130,

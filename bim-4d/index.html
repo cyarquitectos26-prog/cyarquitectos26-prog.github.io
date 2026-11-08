@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="./app.css?v=2.1.1">
+  <link rel="stylesheet" href="./app.css?v=2.1.2">
   <script>
     // Pisos 17 y 19: siguen en la versión anterior del visor (los modelos v2 entregados son del piso 18)
     (function () { var q = new URLSearchParams(location.search), p = q.get('piso'); if (p && p !== '18' && /^\d+$/.test(p)) location.replace('./v1/' + location.search); })();
@@ -21,7 +21,7 @@
     "three-mesh-bvh":"https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.9.1/build/index.module.js"
   }}
   </script>
-  <script type="module" src="./app.js?v=2.1.1"></script>
+  <script type="module" src="./app.js?v=2.1.2"></script>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -41,7 +41,7 @@
 </svg>
 
 <header class="bar">
-  <div class="brand"><b>LAS BAMBAS</b><span>Oficinas · <select id="lvl-sel" aria-label="Piso"><option value="18" selected>Piso 18</option><option value="17">Piso 17 (versión anterior)</option><option value="19">Piso 19 (versión anterior)</option></select> · BIM 4D</span></div>
+  <div class="brand"><b>LAS BAMBAS</b><span>Oficinas · <select id="lvl-sel" aria-label="Piso"><option value="18" selected>Piso 18</option><option value="17">Piso 17 (versión anterior)</option><option value="19">Piso 19 (versión anterior)</option></select><span class="hide-m"> · BIM 4D</span></span></div>
   <div class="search">
     <svg class="icon"><use href="#i-search"/></svg>
     <input id="q" type="search" placeholder="Buscar por tipo, familia, sistema, ambiente o ID Revit" autocomplete="off">
