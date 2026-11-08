@@ -6,7 +6,7 @@ Visor web para revisar el modelo federado del piso 18 contra el cronograma de ob
 
 | Dato | Fuente |
 |---|---|
-| Geometría y propiedades | ARQ e IISS: RVT de `02_RVT_Parametrizados_v2` (Revit 2026), exportados con `export_rvt.cs` sobre copias temporales. IIEE, IIMM, ACI y DATA: `06_IFC_Federado/DRRP_Las_Bambas_Piso_18_Federado.ifc` (IFC4 del mismo modelo v2, coordenadas idénticas a Revit) |
+| Geometría y propiedades | ARQ, IISS y DATA: RVT de `02_RVT_Parametrizados_v2` (Revit 2026), exportados con `export_rvt.cs` sobre copias temporales. IIEE, IIMM y ACI: `06_IFC_Federado/DRRP_Las_Bambas_Piso_18_Federado.ifc` (IFC4 del mismo modelo v2, coordenadas idénticas a Revit) |
 | Cronograma | `DimActividadProject.csv` (XML de MS Project del 04/09/2026, 385 tareas) |
 | Vínculos 4D | `BridgeElementoActividad_4D_v6.csv` (13 737 vínculos) y `Condicion4D.csv` |
 

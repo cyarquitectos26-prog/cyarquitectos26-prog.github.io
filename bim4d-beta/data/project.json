@@ -50,9 +50,9 @@
    "name": "Comunicaciones",
    "color": "#9b7ede",
    "count": 300,
-   "tris": 183630,
-   "gz": 547158,
-   "src": "IFC federado v2"
+   "tris": 273402,
+   "gz": 1093079,
+   "src": "Revit 2026 (RVT v2)"
   }
  ],
  "anchor": [
@@ -64,7 +64,7 @@
  "level": "18",
  "levelName": "Piso 18",
  "floorY": 65.0,
- "generated": "2026-11-08T19:09:16+00:00",
+ "generated": "2026-11-08T19:11:54+00:00",
  "source": "02_RVT_Parametrizados_v2 (Revit 2026) + BridgeElementoActividad_4D_v6",
  "rooms": [
   {
@@ -5382,9 +5382,9 @@
    "simplificados": 85
   },
   "DATA": {
-   "REGLA_VISOR": 170,
    "BRIDGE": 130,
-   "simplificados": 53
+   "simplificados": 53,
+   "REGLA_VISOR": 170
   },
   "puente_sin_geometria": [
    [
