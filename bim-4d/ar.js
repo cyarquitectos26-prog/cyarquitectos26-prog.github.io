@@ -853,23 +853,56 @@ function buildUSDZ() {
   if (!parts || !parts.group) throw new Error('Espera a que cargue el modelo.');
   const meshes = parts.group.children.filter(function (m) { return isModelMesh(m) && m.visible && m.geometry.drawRange.count > 0; });
   if (!meshes.length) throw new Error('No hay elementos visibles para exportar.');
+  meshes.forEach(function (m) { m.updateMatrixWorld(); });
   const f = floorY();
-  const o = refs.A || modelCenter();
-  const cut = sectionCut();
+  const yMin = f - 0.3, yMax = Math.min(f + 6, sectionCut());
+  const inBand = function (pos, a, b, c, ty) {
+    const cy = (pos[a * 3 + 1] + pos[b * 3 + 1] + pos[c * 3 + 1]) / 3 + ty;
+    return cy >= yMin && cy <= yMax;
+  };
+  const alive = function (q, a, b, c) {
+    a *= 3; b *= 3; c *= 3;
+    return !((q[a] === q[b] && q[a + 1] === q[b + 1] && q[a + 2] === q[b + 2]) ||
+      (q[b] === q[c] && q[b + 1] === q[c + 1] && q[b + 2] === q[c + 2]) ||
+      (q[a] === q[c] && q[a + 1] === q[c + 1] && q[a + 2] === q[c + 2]));
+  };
+  const quant = function (cell) {
+    return meshes.map(function (m) {
+      const p = m.geometry.attributes.position.array, q = new Int32Array(p.length);
+      for (let i = 0; i < p.length; i++) q[i] = Math.round(p[i] / cell);
+      return q;
+    });
+  };
+  /* simplificacion por rejilla: elimina el detalle menor que la celda (tornillos, aristas redondeadas) */
+  const CELLS = [0.01, 0.02, 0.03, 0.05, 0.08], TARGET = 350000, STRIDE = 7;
+  let cell = CELLS[0], Q = null;
+  for (let ci = 0; ci < CELLS.length; ci++) {
+    cell = CELLS[ci];
+    Q = quant(cell);
+    let est = 0;
+    meshes.forEach(function (m, mi) {
+      const idx = m.geometry.index.array, pos = m.geometry.attributes.position.array, ty = m.matrixWorld.elements[13];
+      const n = Math.floor(Math.min(m.geometry.drawRange.count, idx.length) / 3);
+      for (let t = 0; t < n; t += STRIDE) {
+        const a = idx[t * 3], b = idx[t * 3 + 1], c = idx[t * 3 + 2];
+        if (inBand(pos, a, b, c, ty) && alive(Q[mi], a, b, c)) est += STRIDE;
+      }
+    });
+    if (est <= TARGET) break;
+  }
   const keyIndex = new Map();
   const groups = [];
   const tri = [];
-  let total = 0;
+  let total = 0, x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
   meshes.forEach(function (mesh, mi) {
     const g = mesh.geometry, idx = g.index.array, col = g.attributes.color.array, pos = g.attributes.position.array;
     const n = Math.floor(Math.min(g.drawRange.count, idx.length) / 3);
-    mesh.updateMatrixWorld();
-    const ty = mesh.matrixWorld.elements[13];
+    const e = mesh.matrixWorld.elements, q = Q[mi];
     const op = Math.round(Math.min(1, Math.max(0.05, mesh.material.opacity == null ? 1 : mesh.material.opacity)) * 20);
     const tg = new Int32Array(n);
     for (let t = 0; t < n; t++) {
       const a = idx[t * 3], b = idx[t * 3 + 1], c = idx[t * 3 + 2];
-      if (cut !== Infinity && (pos[a * 3 + 1] + pos[b * 3 + 1] + pos[c * 3 + 1]) / 3 + ty > cut) { tg[t] = -1; continue; }
+      if (!inBand(pos, a, b, c, e[13]) || !alive(q, a, b, c)) { tg[t] = -1; continue; }
       const key = ((Math.round(col[a * 3] * 31) * 32 + Math.round(col[a * 3 + 1] * 31)) * 32 + Math.round(col[a * 3 + 2] * 31)) * 32 + op;
       let gi = keyIndex.get(key);
       if (gi === undefined) {
@@ -880,11 +913,15 @@ function buildUSDZ() {
       groups[gi].count++;
       tg[t] = gi;
       total++;
+      for (const v of [a, b, c]) {
+        const x = q[v * 3] * cell + e[12], z = q[v * 3 + 2] * cell + e[14];
+        if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z;
+      }
     }
     tri[mi] = tg;
   });
-  if (!total) throw new Error('El corte deja el modelo vacío.');
-  if (total > 3000000) throw new Error('El modelo visible es demasiado pesado (' + fmtInt(total) + ' triángulos). Oculta disciplinas o activa el corte.');
+  if (!total) throw new Error('No queda geometría visible en este piso (revisa el corte y las disciplinas).');
+  if (total > 1200000) throw new Error('El modelo visible es demasiado pesado (' + fmtInt(total) + ' triángulos). Oculta disciplinas o activa el corte.');
   for (const g of groups) g.list = new Uint32Array(g.count * 2);
   tri.forEach(function (tg, mi) {
     for (let t = 0; t < tg.length; t++) {
@@ -895,10 +932,11 @@ function buildUSDZ() {
       g.list[g.fill++] = t;
     }
   });
+  /* origen en el centro de la planta y a nivel de piso terminado: Quick Look lo apoya en el suelo */
+  const ox = (x0 + x1) / 2, oz = (z0 + z1) / 2;
   const stamp = meshes.map(function (m) { return new Int32Array(m.geometry.attributes.position.count); });
   const remap = meshes.map(function (m) { return new Int32Array(m.geometry.attributes.position.count); });
-  const q3 = function (v) { return Math.round(v * 1000) / 1000; };
-  const q2 = function (v) { return Math.round(v * 100) / 100; };
+  const r2 = function (v) { return Math.round(v * 100) / 100; };
   const out = [];
   out.push('#usda 1.0\n(\n    customLayerData = {\n        string creator = "BIM 4D AR"\n    }\n    defaultPrim = "Obra"\n    metersPerUnit = 1\n    upAxis = "Y"\n)\n\n');
   out.push('def Xform "Obra" (\n    kind = "component"\n)\n{\n    def Scope "Materiales"\n    {\n');
@@ -907,7 +945,7 @@ function buildUSDZ() {
       '            token outputs:surface.connect = </Obra/Materiales/M' + gi + '/Superficie.outputs:surface>\n' +
       '            def Shader "Superficie"\n            {\n' +
       '                uniform token info:id = "UsdPreviewSurface"\n' +
-      '                color3f inputs:diffuseColor = (' + q3(g.color[0]) + ', ' + q3(g.color[1]) + ', ' + q3(g.color[2]) + ')\n' +
+      '                color3f inputs:diffuseColor = (' + round3(g.color[0]) + ', ' + round3(g.color[1]) + ', ' + round3(g.color[2]) + ')\n' +
       '                float inputs:metallic = 0\n                float inputs:roughness = 0.85\n' +
       '                float inputs:opacity = ' + g.opacity + '\n                token outputs:surface\n            }\n        }\n');
   });
@@ -919,20 +957,22 @@ function buildUSDZ() {
     const gmn = [Infinity, Infinity, Infinity], gmx = [-Infinity, -Infinity, -Infinity];
     for (let k = 0; k < g.list.length; k += 2) {
       const mi = g.list[k], t = g.list[k + 1];
-      const mesh = meshes[mi], geo = mesh.geometry, idx = geo.index.array, pos = geo.attributes.position.array;
+      const geo = meshes[mi].geometry, idx = geo.index.array;
       const nor = geo.attributes.normal ? geo.attributes.normal.array : null;
-      const e = mesh.matrixWorld.elements;
+      const e = meshes[mi].matrixWorld.elements, q = Q[mi];
       const sm = stamp[mi], rm = remap[mi];
       for (let c = 0; c < 3; c++) {
         const v = idx[t * 3 + c];
         if (sm[v] !== gi + 1) {
           sm[v] = gi + 1;
           rm[v] = nv++;
-          const x = q3(pos[v * 3] + e[12] - o.x), y = q3(pos[v * 3 + 1] + e[13] - f), z = q3(pos[v * 3 + 2] + e[14] - o.z);
+          const x = r2(q[v * 3] * cell + e[12] - ox);
+          const y = r2(Math.max(0, q[v * 3 + 1] * cell + e[13] - f));
+          const z = r2(q[v * 3 + 2] * cell + e[14] - oz);
           if (x < gmn[0]) gmn[0] = x; if (y < gmn[1]) gmn[1] = y; if (z < gmn[2]) gmn[2] = z;
           if (x > gmx[0]) gmx[0] = x; if (y > gmx[1]) gmx[1] = y; if (z > gmx[2]) gmx[2] = z;
-          pts.push('(' + x + ', ' + y + ', ' + z + ')');
-          nrm.push(nor ? '(' + q2(nor[v * 3]) + ', ' + q2(nor[v * 3 + 1]) + ', ' + q2(nor[v * 3 + 2]) + ')' : '(0, 1, 0)');
+          pts.push('(' + x + ',' + y + ',' + z + ')');
+          nrm.push(nor ? '(' + r2(nor[v * 3]) + ',' + r2(nor[v * 3 + 1]) + ',' + r2(nor[v * 3 + 2]) + ')' : '(0,1,0)');
         }
         ind.push(rm[v]);
       }
@@ -941,17 +981,17 @@ function buildUSDZ() {
     out.push('\n    def Mesh "G' + gi + '" (\n        prepend apiSchemas = ["MaterialBindingAPI"]\n    )\n    {\n' +
       '        uniform bool doubleSided = 1\n' +
       '        float3[] extent = [(' + gmn.join(', ') + '), (' + gmx.join(', ') + ')]\n' +
-      '        int[] faceVertexCounts = [' + new Array(ind.length / 3).fill('3').join(', ') + ']\n' +
-      '        int[] faceVertexIndices = [' + ind.join(', ') + ']\n' +
+      '        int[] faceVertexCounts = [' + new Array(ind.length / 3).fill('3').join(',') + ']\n' +
+      '        int[] faceVertexIndices = [' + ind.join(',') + ']\n' +
       '        rel material:binding = </Obra/Materiales/M' + gi + '>\n' +
-      '        normal3f[] normals = [' + nrm.join(', ') + '] (\n            interpolation = "vertex"\n        )\n' +
-      '        point3f[] points = [' + pts.join(', ') + ']\n' +
+      '        normal3f[] normals = [' + nrm.join(',') + '] (\n            interpolation = "vertex"\n        )\n' +
+      '        point3f[] points = [' + pts.join(',') + ']\n' +
       '        uniform token subdivisionScheme = "none"\n    }\n');
     g.list = null;
   });
   out.push('}\n');
   const data = new TextEncoder().encode(out.join(''));
-  return { blob: usdzBlob('obra.usda', data), triangles: total, size: [mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]] };
+  return { blob: usdzBlob('obra.usda', data), triangles: total, cell: cell, size: [mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]] };
 }
 async function prepareQuickLook() {
   const btn = $('arx-usdz');
@@ -965,8 +1005,9 @@ async function prepareQuickLook() {
     qlURL = URL.createObjectURL(res.blob);
     $('arx-ql').href = qlURL + '#allowsContentScaling=0';
     $('arx-ql').hidden = false;
-    say('Listo: ' + fmtInt(res.triangles) + ' triángulos · ' + (res.blob.size / 1048576).toFixed(1) + ' MB · ' +
-      res.size[0].toFixed(1) + ' × ' + res.size[2].toFixed(1) + ' m. Toca «Abrir en AR», apunta al piso y camina dentro del modelo.');
+    say('Listo: ' + fmtInt(res.triangles) + ' triángulos (detalle mínimo ' + Math.round(res.cell * 100) + ' cm) · ' +
+      (res.blob.size / 1048576).toFixed(1) + ' MB · planta de ' + res.size[0].toFixed(1) + ' × ' + res.size[2].toFixed(1) +
+      ' m. Toca «Abrir en AR» y apunta al piso: el centro del piso aparece donde toques; arrástralo y gíralo con los dedos para alinearlo con la obra.');
   } catch (e) {
     say(e.message);
   } finally {
