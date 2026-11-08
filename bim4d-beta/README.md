@@ -31,4 +31,4 @@ El panel «Calidad del vínculo 4D» lista los elementos del puente que no se di
 - `index.html`, `app.css`, `app.js`: visor (three.js 0.179).
 - `ar.js`: realidad aumentada (WebXR con GPS y brújula en Android; AR Quick Look en iPhone/iPad).
 - `geo.js`: georreferencia y editor en mapa satelital (Leaflet + imágenes Esri).
-- `data/project.json`, `data/schedule.json`, `data/18/*.json|bin`: modelo por especialidad (geometría comprimida con gzip, posiciones cuantizadas a 16 bits, < 2 mm).
+- `data/project.json`, `data/schedule.json`, `data/18/*.json|bin`: modelo por especialidad (posiciones cuantizadas a 16 bits, < 2 mm; vértices reordenados por elemento, diferencias zigzag e índices locales en planos de bytes y gzip: unos 7 MB para las seis especialidades).

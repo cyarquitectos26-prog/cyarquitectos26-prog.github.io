@@ -9,7 +9,7 @@ THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
 const $ = (id) => document.getElementById(id);
-const V = 'b11';
+const V = 'b12';
 const params = new URLSearchParams(location.search);
 const fmt = new Intl.NumberFormat('es-PE', { maximumFractionDigits: 2 });
 const fmtInt = new Intl.NumberFormat('es-PE');
@@ -129,17 +129,46 @@ const hex = (h) => new THREE.Color(h);
 const C_ST = Object.fromEntries(Object.entries(STATES).map(([k, v]) => [k, hex(v.color)]));
 const C_SEL = new THREE.Color('#33b5ff');
 
+// Codificación compacta (enc 2, ver build.py): posiciones como diferencias zigzag por elemento y componente,
+// normales por componente e índices locales con código de marca alta; todo en planos de bytes para que gzip rinda más.
+function decodeV2(buf, head) {
+  const nv = head.nv, ni = head.ni, els = head.elements;
+  const u8 = new Uint8Array(buf), s8 = new Int8Array(buf);
+  let o = 0;
+  const pos = new Uint16Array(nv * 3);
+  for (let c = 0; c < 3; c++) {
+    const lo = o, hi = o + nv; o += nv * 2;
+    for (const e of els) {
+      const v0 = e.v[0], v1 = v0 + e.v[1]; let p = 0;
+      for (let k = v0; k < v1; k++) { const z = u8[lo + k] | (u8[hi + k] << 8); p = (p + ((z >>> 1) ^ -(z & 1))) & 0xFFFF; pos[k * 3 + c] = p; }
+    }
+  }
+  const nor = new Int8Array(nv * 3);
+  for (let c = 0; c < 3; c++) { for (let k = 0; k < nv; k++) nor[k * 3 + c] = s8[o + k]; o += nv; }
+  const real = new Uint8Array(buf, o, nv * 3); o += nv * 3 + head.pad;
+  const idx = new Uint32Array(ni); const lo = o, hi = o + ni;
+  for (const e of els) {
+    const v0 = e.v[0], i0 = e.i[0], i1 = i0 + e.i[1]; let hw = 0;
+    for (let j = i0; j < i1; j++) { const c = u8[lo + j] | (u8[hi + j] << 8); if (c === 0) idx[j] = v0 + hw++; else idx[j] = v0 + hw - c; }
+  }
+  return { pos, nor, real, idx };
+}
+
 async function loadDiscipline(d, lvl, onBytes) {
   const [head, bin] = await Promise.all([
     fetch('./data/' + lvl + '/' + d.d + '.json?v=' + V).then((r) => r.json()),
     fetchProgress('./data/' + lvl + '/' + d.d + '.bin?v=' + V, onBytes).then(gunzip),
   ]);
   const nv = head.nv, ni = head.ni;
-  let o = 0;
-  const pos = new Uint16Array(bin, o, nv * 3); o += nv * 6;
-  const nor = new Int8Array(bin, o, nv * 3); o += nv * 3;
-  const real = new Uint8Array(bin, o, nv * 3); o += nv * 3; o += head.pad;
-  const idx = new Uint32Array(bin.slice(o, o + ni * 4));
+  let pos, nor, real, idx;
+  if (head.enc === 2) ({ pos, nor, real, idx } = decodeV2(bin, head));
+  else {
+    let o = 0;
+    pos = new Uint16Array(bin, o, nv * 3); o += nv * 6;
+    nor = new Int8Array(bin, o, nv * 3); o += nv * 3;
+    real = new Uint8Array(bin, o, nv * 3); o += nv * 3; o += head.pad;
+    idx = new Uint32Array(bin.slice(o, o + ni * 4));
+  }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   g.setAttribute('normal', new THREE.BufferAttribute(nor, 3, true));

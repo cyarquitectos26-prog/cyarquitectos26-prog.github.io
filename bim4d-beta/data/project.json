@@ -6,7 +6,7 @@
    "color": "#c9c3b8",
    "count": 1227,
    "tris": 732262,
-   "gz": 5378496,
+   "gz": 2747592,
    "src": "Revit 2026 (RVT v2)"
   },
   {
@@ -15,7 +15,7 @@
    "color": "#f2b134",
    "count": 451,
    "tris": 56492,
-   "gz": 302104,
+   "gz": 31729,
    "src": "IFC federado v2"
   },
   {
@@ -24,7 +24,7 @@
    "color": "#3fa7d6",
    "count": 807,
    "tris": 283130,
-   "gz": 2136197,
+   "gz": 847946,
    "src": "Revit 2026 (RVT v2)"
   },
   {
@@ -33,7 +33,7 @@
    "color": "#59c3a3",
    "count": 2835,
    "tris": 831971,
-   "gz": 5357603,
+   "gz": 2065332,
    "src": "IFC federado v2"
   },
   {
@@ -42,7 +42,7 @@
    "color": "#e4572e",
    "count": 1580,
    "tris": 620534,
-   "gz": 3785746,
+   "gz": 1053802,
    "src": "IFC federado v2"
   },
   {
@@ -51,7 +51,7 @@
    "color": "#9b7ede",
    "count": 300,
    "tris": 183630,
-   "gz": 1152315,
+   "gz": 547158,
    "src": "IFC federado v2"
   }
  ],
@@ -64,7 +64,7 @@
  "level": "18",
  "levelName": "Piso 18",
  "floorY": 65.0,
- "generated": "2026-11-08T19:05:24+00:00",
+ "generated": "2026-11-08T19:09:16+00:00",
  "source": "02_RVT_Parametrizados_v2 (Revit 2026) + BridgeElementoActividad_4D_v6",
  "rooms": [
   {
@@ -5513,7 +5513,7 @@
     "PipeFitting",
     "Adaptador Victaulic",
     "Standard",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
+    "no está en el IFC federado v2 (eliminado, reemplazado o no exportado)"
    ],
    [
     "ACI",
@@ -5521,7 +5521,7 @@
     "PipeFitting",
     "Adaptador Victaulic",
     "Standard",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
+    "no está en el IFC federado v2 (eliminado, reemplazado o no exportado)"
    ],
    [
     "ACI",
@@ -5529,7 +5529,7 @@
     "PipeFitting",
     "Adaptador Victaulic",
     "Standard",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
+    "no está en el IFC federado v2 (eliminado, reemplazado o no exportado)"
    ],
    [
     "ACI",
@@ -5537,7 +5537,7 @@
     "PipeFitting",
     "Adaptador Victaulic",
     "Standard",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
+    "no está en el IFC federado v2 (eliminado, reemplazado o no exportado)"
    ],
    [
     "ACI",
@@ -5545,7 +5545,7 @@
     "PipeFitting",
     "Adaptador Victaulic",
     "Standard",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
+    "no está en el IFC federado v2 (eliminado, reemplazado o no exportado)"
    ],
    [
     "ACI",
@@ -5553,7 +5553,7 @@
     "PipeFitting",
     "Adaptador Victaulic",
     "Standard",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
+    "no está en el IFC federado v2 (eliminado, reemplazado o no exportado)"
    ],
    [
     "ACI",
@@ -5561,7 +5561,7 @@
     "PipeFitting",
     "Adaptador Victaulic",
     "Standard",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
+    "no está en el IFC federado v2 (eliminado, reemplazado o no exportado)"
    ],
    [
     "ACI",
@@ -5569,7 +5569,7 @@
     "PipeFitting",
     "Adaptador Victaulic",
     "Standard",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
+    "no está en el IFC federado v2 (eliminado, reemplazado o no exportado)"
    ],
    [
     "ACI",
@@ -5577,7 +5577,7 @@
     "PipeFitting",
     "Adaptador Victaulic",
     "Standard",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
+    "no está en el IFC federado v2 (eliminado, reemplazado o no exportado)"
    ],
    [
     "ACI",
@@ -5585,7 +5585,7 @@
     "PipeFitting",
     "Adaptador Victaulic",
     "Standard",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
+    "no está en el IFC federado v2 (eliminado, reemplazado o no exportado)"
    ],
    [
     "ACI",
@@ -5593,7 +5593,7 @@
     "PipeFitting",
     "Adaptador Victaulic",
     "Standard",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
+    "no está en el IFC federado v2 (eliminado, reemplazado o no exportado)"
    ],
    [
     "ACI",
@@ -5601,7 +5601,7 @@
     "PipeFitting",
     "Adaptador Victaulic",
     "Standard",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
+    "no está en el IFC federado v2 (eliminado, reemplazado o no exportado)"
    ],
    [
     "ACI",
@@ -5609,7 +5609,7 @@
     "PipeFitting",
     "Adaptador Victaulic",
     "Standard",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
+    "no está en el IFC federado v2 (eliminado, reemplazado o no exportado)"
    ],
    [
     "ACI",
@@ -5617,7 +5617,7 @@
     "PipeFitting",
     "Adaptador Victaulic",
     "Standard",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
+    "no está en el IFC federado v2 (eliminado, reemplazado o no exportado)"
    ],
    [
     "ACI",
@@ -5625,7 +5625,7 @@
     "PipeFitting",
     "Adaptador Victaulic",
     "Standard",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
+    "no está en el IFC federado v2 (eliminado, reemplazado o no exportado)"
    ],
    [
     "ACI",
@@ -5633,31 +5633,7 @@
     "PipeFitting",
     "Adaptador Victaulic",
     "Standard",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
-   ],
-   [
-    "ARQ",
-    2359235,
-    "CurtainWallPanels",
-    "Panel de sistema",
-    "Acristalado",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
-   ],
-   [
-    "ARQ",
-    1174024,
-    "Walls",
-    "Basic Wall",
-    "T-RH-01_Drywall RH. Ambas caras. e=12cm",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
-   ],
-   [
-    "ARQ",
-    2229360,
-    "Walls",
-    "Basic Wall",
-    "T-RH-01_Drywall RH. Ambas caras. e=12cm",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
+    "no está en el IFC federado v2 (eliminado, reemplazado o no exportado)"
    ],
    [
     "IIMM",
@@ -5665,7 +5641,7 @@
     "FlexDuctCurves",
     "Flex Duct Round",
     "Flex - Round",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
+    "no está en el IFC federado v2 (eliminado, reemplazado o no exportado)"
    ],
    [
     "IIMM",
@@ -5673,7 +5649,7 @@
     "FlexDuctCurves",
     "Flex Duct Round",
     "Flex - Round",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
+    "no está en el IFC federado v2 (eliminado, reemplazado o no exportado)"
    ],
    [
     "IIMM",
@@ -5681,7 +5657,7 @@
     "FlexDuctCurves",
     "Flex Duct Round",
     "Flex - Redondo",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
+    "no está en el IFC federado v2 (eliminado, reemplazado o no exportado)"
    ],
    [
     "IIMM",
@@ -5689,7 +5665,7 @@
     "FlexDuctCurves",
     "Flex Duct Round",
     "Flex - Redondo",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
+    "no está en el IFC federado v2 (eliminado, reemplazado o no exportado)"
    ],
    [
     "IIMM",
@@ -5697,7 +5673,7 @@
     "FlexDuctCurves",
     "Flex Duct Round",
     "Flex - Redondo",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
+    "no está en el IFC federado v2 (eliminado, reemplazado o no exportado)"
    ],
    [
     "IIMM",
@@ -5705,7 +5681,31 @@
     "FlexDuctCurves",
     "Flex Duct Round",
     "Flex - Redondo",
-    "no existe en el modelo v2 (eliminado o reemplazado)"
+    "no está en el IFC federado v2 (eliminado, reemplazado o no exportado)"
+   ],
+   [
+    "ARQ",
+    2359235,
+    "CurtainWallPanels",
+    "Panel de sistema",
+    "Acristalado",
+    "no está en el modelo Revit v2 (eliminado, reemplazado o no exportado)"
+   ],
+   [
+    "ARQ",
+    1174024,
+    "Walls",
+    "Basic Wall",
+    "T-RH-01_Drywall RH. Ambas caras. e=12cm",
+    "no está en el modelo Revit v2 (eliminado, reemplazado o no exportado)"
+   ],
+   [
+    "ARQ",
+    2229360,
+    "Walls",
+    "Basic Wall",
+    "T-RH-01_Drywall RH. Ambas caras. e=12cm",
+    "no está en el modelo Revit v2 (eliminado, reemplazado o no exportado)"
    ]
   ]
  }
