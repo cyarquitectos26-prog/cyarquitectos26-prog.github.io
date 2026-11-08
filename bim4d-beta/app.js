@@ -9,7 +9,7 @@ THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
 const $ = (id) => document.getElementById(id);
-const V = 'b7';
+const V = 'b8';
 const params = new URLSearchParams(location.search);
 const fmt = new Intl.NumberFormat('es-PE', { maximumFractionDigits: 2 });
 const fmtInt = new Intl.NumberFormat('es-PE');
@@ -790,14 +790,21 @@ async function main() {
     fit();
     $('loading').remove();
     const q = project.qa || {};
-    $('qa-box').innerHTML = '<b>Modelo</b>: ' + esc(project.source) + '<br>Generado ' + esc((project.generated || '').slice(0, 16).replace('T', ' ')) + ' UTC · '
-      + fmtInt.format(S.elems.length) + ' elementos, todos con fecha o marcados como existentes.';
+    const cnt = { BRIDGE: 0, CONEXION: 0, REGLA_VISOR: 0, EXIST: 0, SIN: 0 };
+    for (const e of S.elems) { if (e.st || !e.links.length) cnt[e.links.length ? 'SIN' : 'EXIST']++; else cnt[e.m4d in cnt ? e.m4d : 'SIN']++; }
+    $('qa-box').innerHTML = '<h2>Calidad del vínculo 4D</h2>'
+      + '<dl class="kv"><dt>Puente 4D v6</dt><dd>' + fmtInt.format(cnt.BRIDGE) + '</dd><dt>Por conexión MEP</dt><dd>' + fmtInt.format(cnt.CONEXION) + '</dd>'
+      + '<dt>Regla del visor</dt><dd>' + fmtInt.format(cnt.REGLA_VISOR) + ' <span class="muted">(propuesta)</span></dd><dt>Existentes</dt><dd>' + fmtInt.format(cnt.EXIST) + '</dd>'
+      + '<dt>Sin fecha</dt><dd><b>' + fmtInt.format(cnt.SIN) + '</b></dd></dl>'
+      + '<p class="small muted">Fuente: ' + esc(project.source) + ' · generado ' + esc((project.generated || '').slice(0, 16).replace('T', ' ')) + ' UTC. Sin DWG importados ni geometría «Light Source» de luminarias.</p>';
     // tareas pesadas en segundo plano: BVH para selección y aristas
     const idle = window.requestIdleCallback || ((f) => setTimeout(f, 60));
     if (!matchMedia('(pointer:coarse)').matches) for (const D of S.disc.values()) idle(() => { ensureBVH(D); invalidate(); });
     idle(() => { for (const D of S.disc.values()) if (D.d !== 'DATA') buildEdges(D); refresh(); });
     emit('ready');
     if (params.get('modo') === 'ar') openAR();
+    else if (params.get('modo') === 'recorrido') setMode('walk');
+    else if (params.get('modo') === 'planta') setMode('plan');
   } catch (err) {
     console.error(err);
     msg.textContent = 'No se pudo cargar el modelo: ' + err.message; bar.style.background = 'var(--warn)';
