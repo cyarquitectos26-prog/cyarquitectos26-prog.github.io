@@ -9,7 +9,7 @@ THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
 const $ = (id) => document.getElementById(id);
-const V = '2.1.2';
+const V = '2.1.3';
 const params = new URLSearchParams(location.search);
 const fmt = new Intl.NumberFormat('es-PE', { maximumFractionDigits: 2 });
 const fmtInt = new Intl.NumberFormat('es-PE');
@@ -336,7 +336,7 @@ S.setCut = (on, t) => { S.cutOn = on; if (t != null) S.cutT = t; $('cut-on').che
 function fit(box = S.bounds, iso = true) {
   const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
   const asp = Math.max(0.35, (view.clientWidth || 1) / (view.clientHeight || 1));
-  const r = (Math.max(s.x, s.z) * 0.62 + 4) * Math.max(1, 1.25 / asp);
+  const r = (Math.max(s.x, s.z) * 0.62 + 4) * Math.max(1, 1.45 / asp);
   controls.target.copy(c);
   if (iso) camera.position.set(c.x + r * 0.75, c.y + r * 0.85, c.z + r * 0.95);
   else camera.position.set(c.x, c.y + r * 1.4, c.z + 0.01);
