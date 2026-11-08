@@ -35,7 +35,7 @@ const METHODS = {
 const S = {
   project: null, schedule: null, tasks: new Map(), disc: new Map(), elems: [], byUid: new Map(),
   cut: null, colorMode: params.get('color') || '4d', pending: params.get('pend') || 'ghost',
-  opacity: 1, xray: false, cutOn: false, cutT: 0.62, ceilings: true, edges: !matchMedia('(pointer:coarse)').matches,
+  opacity: 1, xray: false, cutOn: false, cutT: 0.62, ceilings: false, upper: false, edges: !matchMedia('(pointer:coarse)').matches,
   filter: { cat: '', sys: '', link: '' }, hidden: new Set(), isolate: null, selected: null, taskSel: null,
   mode: 'orbit', bounds: new THREE.Box3(), floorY: 65, listeners: {},
 };
@@ -216,6 +216,7 @@ function passesFilter(e) {
   if (S.hidden.has(e.uid)) return false;
   if (S.isolate && !S.isolate.has(e.uid)) return false;
   if (!S.ceilings && e.bic === 'OST_Ceilings') return false;
+  if (!S.upper && e.upper) return false;
   if (f.cat && e.cat !== f.cat) return false;
   if (f.sys && e.sysType !== f.sys && e.sys !== f.sys) return false;
   if (f.link) {
@@ -403,15 +404,18 @@ export function pickAt(ndc, cam = activeCam, rayOverride = null) {
   if (rayOverride) ray.set(rayOverride.origin, rayOverride.direction); else ray.setFromCamera(ndc, cam);
   const picks = [...S.disc.values()].filter((D) => D.visible && D.pick.geometry.boundsTree).map((D) => D.pick);
   const hits = ray.intersectObjects(picks, false);
+  let ghost = null;
   for (const h of hits) {
     if (S.cutOn && clipPlane.distanceToPoint(h.point) < 0) continue;
     const D = S.disc.get(h.object.userData.disc);
     const e = triToElem(D, h.faceIndex);
     if (!e || !e.vis) continue;
-    if (S.colorMode === '4d' && e.state === 'PENDIENTE' && S.pending !== 'solid') continue;
+    const isGhost = S.xray || e.bic === 'OST_PipeInsulations' || (S.colorMode === '4d' && e.state === 'PENDIENTE');
+    if (S.colorMode === '4d' && e.state === 'PENDIENTE' && S.pending === 'hide') continue;
+    if (isGhost) { if (!ghost) ghost = { e, point: h.point, dist: h.distance }; continue; }
     return { e, point: h.point, dist: h.distance };
   }
-  return null;
+  return ghost;
 }
 S.pickAt = pickAt;
 let downAt = null;
@@ -580,6 +584,9 @@ $('cut-on').addEventListener('change', (e) => S.setCut(e.target.checked));
 $('cut').addEventListener('input', (e) => S.setCut(true, +e.target.value / 100));
 $('xray').addEventListener('change', (e) => { S.xray = e.target.checked; refresh(); });
 $('ceil').addEventListener('change', (e) => { S.ceilings = e.target.checked; refresh(); });
+$('upper').addEventListener('change', (e) => { S.upper = e.target.checked; refresh(); });
+S.setCeilings = (v) => { S.ceilings = v; $('ceil').checked = v; refresh(); };
+S.setUpper = (v) => { S.upper = v; $('upper').checked = v; refresh(); };
 $('edges').addEventListener('change', (e) => { S.edges = e.target.checked; refresh(); });
 $('f-cat').addEventListener('change', (e) => { S.filter.cat = e.target.value; refresh(); });
 $('f-sys').addEventListener('change', (e) => { S.filter.sys = e.target.value; refresh(); });
@@ -706,7 +713,8 @@ async function main() {
     await Promise.all(project.disciplines.map((d) => loadDiscipline(d, project.level, (n) => { got += n; bar.style.width = Math.min(100, got / total * 100) + '%'; })));
     // ordenar especialidades como en el proyecto
     const order = project.disciplines.map((d) => d.d); S.disc = new Map(order.map((k) => [k, S.disc.get(k)]));
-    for (const D of S.disc.values()) { D.mesh.geometry.computeBoundingBox(); const b = D.mesh.geometry.boundingBox.clone().applyMatrix4(D.mesh.matrixWorld); S.bounds.union(b); }
+    for (const D of S.disc.values()) { D.mesh.updateMatrixWorld(true); D.pick.updateMatrixWorld(true); D.mesh.geometry.computeBoundingBox(); S.bounds.union(D.mesh.geometry.boundingBox.clone().applyMatrix4(D.mesh.matrixWorld)); }
+    for (const e of S.elems) e.upper = (e.bic === 'OST_Floors' || e.bic === 'OST_Roofs') && e.bb[1] > S.floorY + 2;
     // caja de trabajo: franja del piso
     S.bounds.min.y = Math.max(S.bounds.min.y, S.floorY - 1.5); S.bounds.max.y = Math.min(S.bounds.max.y, S.floorY + 5);
     S.taskCounts = new Map(); for (const e of S.elems) for (const l of e.links) S.taskCounts.set(l.t, (S.taskCounts.get(l.t) || 0) + 1);
