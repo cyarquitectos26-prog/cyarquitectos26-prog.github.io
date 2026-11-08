@@ -116,7 +116,7 @@ function draw(S, center) {
   for (const o of outlines(S)) {
     const ll = o.pts.map(([x, z]) => { const p = modelToLatLon(S, x, z, g); return [p.lat, p.lon]; });
     L.polygon(ll, o.kind === 'box'
-      ? { color: '#3d8bfd', weight: 3, fillColor: '#3d8bfd', fillOpacity: 0.12, interactive: false }
+      ? { color: '#ffffff', weight: 2.5, fillColor: '#0b0b0b', fillOpacity: 0.22, interactive: false }
       : { color: '#ffffff', weight: 1.2, fillOpacity: 0.05, interactive: false }).addTo(layer);
   }
   const a = anchorOf(S), b = S.bounds;
@@ -143,7 +143,7 @@ function redrawSoon(S, keepRot) {
     layer = L.layerGroup().addTo(map);
     for (const o of outlines(S)) {
       const ll = o.pts.map(([x, z]) => { const p = modelToLatLon(S, x, z, g); return [p.lat, p.lon]; });
-      L.polygon(ll, o.kind === 'box' ? { color: '#3d8bfd', weight: 3, fillColor: '#3d8bfd', fillOpacity: 0.12, interactive: false } : { color: '#fff', weight: 1.2, fillOpacity: 0.05, interactive: false }).addTo(layer);
+      L.polygon(ll, o.kind === 'box' ? { color: '#ffffff', weight: 2.5, fillColor: '#0b0b0b', fillOpacity: 0.22, interactive: false } : { color: '#fff', weight: 1.2, fillOpacity: 0.05, interactive: false }).addTo(layer);
     }
     { const a = anchorOf(S), b = S.bounds; const reach = Math.max(b.max.x - b.min.x, b.max.z - b.min.z) * 0.6; const n = modelToLatLon(S, a.x, a.z - reach, g);
       L.polyline([[g.lat, g.lon], [n.lat, n.lon]], { color: '#fff', weight: 2, dashArray: '6 6', interactive: false }).addTo(layer); }

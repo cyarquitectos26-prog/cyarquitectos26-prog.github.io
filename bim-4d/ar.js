@@ -1,7 +1,7 @@
 // AR en obra: WebXR (Android/ARCore) con colocación por geolocalización + brújula, ajuste fino y controles;
 // iPhone/iPad: AR Quick Look (USDZ generado con lo que se ve, escala fija 1:1).
-import { anchorOf, latLonToENU, enuToLatLon, earthUrl } from './geo.js?v=2.0.2';
-import { STATES } from './app.js?v=2.0.2';
+import { anchorOf, latLonToENU, enuToLatLon, earthUrl } from './geo.js?v=2.1.0';
+import { STATES } from './app.js?v=2.1.0';
 
 const $ = (id) => document.getElementById(id);
 const rad = (d) => d * Math.PI / 180, deg = (r) => r * 180 / Math.PI;
@@ -32,7 +32,7 @@ export async function openAR(app) {
       : '<li>Apunta al piso y toca la pantalla donde quieras el centro del piso 18.</li><li>Gíralo con dos dedos hasta que coincida con la obra. Para que aparezca solo, guarda la ubicación en el mapa.</li>';
     html += '<li>Dentro del AR: <b>Capas</b> para elegir especialidades, <b>4D</b> para la fecha y <b>Vista</b> para opacidad, corte y colores. Toca un elemento para ver su ficha.</li></ol>';
   } else if (isIOS || quickLook) {
-    html += '<li>Se prepara lo que ves ahora (especialidades, colores 4D, opacidad y corte) y se abre en AR Quick Look a escala fija 1:1.</li><li>Apunta al piso, toca para colocarlo y gíralo con dos dedos hasta que coincida.</li></ol>'
+    html += '<li>Se prepara lo que ves ahora (especialidades, colores 4D, opacidad y corte) con la misma geometría del visor y se abre en AR Quick Look a escala fija 1:1.</li><li>Apunta al piso, toca para colocarlo y gíralo con dos dedos hasta que coincida.</li></ol>'
       + '<div class="note warn">En iPhone/iPad Safari no permite AR web con GPS: la colocación es manual. En Android con Chrome el modelo se ubica solo.</div>';
   } else {
     html += '<li>Este equipo no tiene cámara AR. Abre el visor en tu celular o tablet escaneando el QR.</li></ol>';
@@ -42,7 +42,7 @@ export async function openAR(app) {
   body.innerHTML = html;
   foot.innerHTML = '';
   const mk = (txt, cls, fn) => { const b = document.createElement('button'); b.textContent = txt; if (cls) b.className = cls; b.onclick = fn; foot.appendChild(b); return b; };
-  mk('Ubicar en el mapa', '', async () => { dlg.close(); const m = await import('./geo.js?v=2.0.2'); m.openMapEditor(S); });
+  mk('Ubicar en el mapa', '', async () => { dlg.close(); const m = await import('./geo.js?v=2.1.0'); m.openMapEditor(S); });
   if (xrOk) mk('Iniciar AR', 'primary', () => startXR());
   else if (isIOS || quickLook) { const b = mk('Preparar modelo', 'primary', () => prepareQuickLook(b)); }
   else mk('Mostrar QR', 'primary', () => { dlg.close(); $('btn-share').click(); });
@@ -106,6 +106,7 @@ function buildUI() {
     + '<div class="ar-sheet" id="ar-s-view"><h3>Vista</h3>'
     + '<div class="row"><label>Opacidad</label><output id="ar-op-o"></output></div><input type="range" id="ar-op" min="10" max="100">'
     + '<div class="row"><label><input type="checkbox" id="ar-cut-on"> Corte horizontal</label><output id="ar-cut-o"></output></div><input type="range" id="ar-cut" min="0" max="100">'
+    + '<div class="row"><label><input type="checkbox" id="ar-edges"> Realzar aristas</label></div>'
     + '<h3>Colorear por</h3><div class="ar-chips" id="ar-color"><button data-v="4d">Estado 4D</button><button data-v="disc">Especialidad</button><button data-v="real">Materiales</button></div>'
     + '<h3>Pendientes a la fecha</h3><div class="ar-chips" id="ar-pend"><button data-v="ghost">Fantasma</button><button data-v="hide">Ocultos</button><button data-v="solid">Visibles</button></div></div>'
     + '<div class="ar-sheet" id="ar-s-adjust"><h3>Ajuste fino</h3><p class="small" style="margin:0 0 8px;opacity:.85">Arrastra con un dedo para mover y gira con dos. También puedes usar los botones.</p>'
@@ -148,6 +149,8 @@ function buildUI() {
   $('ar-cut-on').checked = S.cutOn; $('ar-cut').value = Math.round(S.cutT * 100);
   $('ar-cut-on').onchange = (e) => S.setCut(e.target.checked);
   $('ar-cut').oninput = (e) => { S.setCut(true, +e.target.value / 100); $('ar-cut-on').checked = true; };
+  $('ar-edges').checked = S.edges;
+  $('ar-edges').onchange = (e) => { S.edges = e.target.checked; $('edges').checked = S.edges; S.refresh(); };
   const syncSeg = () => {
     $('ar-color').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === S.colorMode)));
     $('ar-pend').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === S.pending)));
@@ -215,7 +218,6 @@ async function startXR() {
   const r = S.three.renderer, cam = S.three.camera;
   st.saved = { pos: cam.position.clone(), quat: cam.quaternion.clone(), near: cam.near, far: cam.far, edges: S.edges, mode: S.mode, target: S.three.controls.target.clone() };
   if (S.mode !== 'orbit') S.setMode('orbit');
-  S.edges = false; S.refresh();
   cam.near = 0.03; cam.far = 400;
   st.session = session; st.heading = []; st.R = null; st.A = null; st.yOff = 0; st.lastHit = null; st.placedWith = null;
   session.addEventListener('end', onEnd, { once: true });
@@ -225,6 +227,9 @@ async function startXR() {
   S.three.modelRoot.visible = false;
   makeReticle();
   S.setFrameHook(frame);
+  // misma nitidez que en la web: búfer a la resolución nativa de la pantalla y sin foveación
+  try { const nf = XRWebGLLayer.getNativeFramebufferScaleFactor(session); r.xr.setFramebufferScaleFactor(Math.min(Math.max(nf || 1, 1), 2)); } catch { /* */ }
+  try { r.xr.setFoveation(0); } catch { /* */ }
   try {
     await r.xr.setSession(session);
     st.base = r.xr.getReferenceSpace();
@@ -247,7 +252,7 @@ function onEnd() {
   const sv = st.saved;
   cam.position.copy(sv.pos); cam.quaternion.copy(sv.quat); cam.near = sv.near; cam.far = sv.far; cam.updateProjectionMatrix();
   S.three.controls.target.copy(sv.target); S.three.controls.update();
-  S.edges = sv.edges; S.refresh();
+  $('edges').checked = S.edges; S.refresh();
   $('ar-ui').classList.remove('on'); $('ar-ui').innerHTML = '';
   stopSensors();
   setTimeout(() => { window.dispatchEvent(new Event('resize')); S.invalidate(); }, 100);
@@ -295,7 +300,7 @@ function frame(time, xframe) {
         const pw = hits[0].getPose(r.xr.getReferenceSpace()); if (pw) st.reticle.matrix.fromArray(pw.transform.matrix);
       } else if (!pb) st.lastHit = null;
       st.reticle.visible = !!st.lastHit && st.mode !== 'placed';
-      st.reticle.material.color.set(st.mode === 'locate' ? 0x6cc3ff : 0xffffff);
+      st.reticle.material.opacity = st.mode === 'locate' ? 0.6 : 1;
     }
     if (st.mode === 'locate') {
       const hs = headingStats();
@@ -422,24 +427,46 @@ function wireGestures(el) {
 }
 
 // ------------------------------------------------------------------ iPhone / iPad: USDZ para AR Quick Look
-function crc32(u8) {
-  let t = crc32.t; if (!t) { t = crc32.t = new Uint32Array(256); for (let i = 0; i < 256; i++) { let c = i; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[i] = c >>> 0; } }
-  let c = 0xffffffff; for (let i = 0; i < u8.length; i++) c = t[(c ^ u8[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0;
+// Misma geometría que el visor web: sin simplificar ni redondear (precisión 1 mm), normales de Revit,
+// colores y transparencias del estado actual. Se escribe por bloques de bytes para no crear cadenas gigantes.
+function crc32(u8, c = 0xffffffff) {
+  let t = crc32.t; if (!t) { t = crc32.t = new Uint32Array(256); for (let i = 0; i < 256; i++) { let k = i; for (let j = 0; j < 8; j++) k = k & 1 ? 0xedb88320 ^ (k >>> 1) : k >>> 1; t[i] = k >>> 0; } }
+  for (let i = 0; i < u8.length; i++) c = t[(c ^ u8[i]) & 0xff] ^ (c >>> 8);
+  return c;
 }
-function usdzBlob(name, data) {
-  const nb = new TextEncoder().encode(name), crc = crc32(data), head = 30 + nb.length;
+function usdzBlob(name, chunks) {
+  let crc = 0xffffffff, size = 0; for (const ch of chunks) { crc = crc32(ch, crc); size += ch.length; }
+  crc = (crc ^ 0xffffffff) >>> 0;
+  const nb = new TextEncoder().encode(name), head = 30 + nb.length;
   let pad = (64 - (head % 64)) % 64; if (pad > 0 && pad < 4) pad += 64;
   const lh = new Uint8Array(head + pad), lv = new DataView(lh.buffer);
   lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true); lv.setUint16(12, 0x21, true); lv.setUint32(14, crc, true);
-  lv.setUint32(18, data.length, true); lv.setUint32(22, data.length, true); lv.setUint16(26, nb.length, true); lv.setUint16(28, pad, true); lh.set(nb, 30);
+  lv.setUint32(18, size, true); lv.setUint32(22, size, true); lv.setUint16(26, nb.length, true); lv.setUint16(28, pad, true); lh.set(nb, 30);
   if (pad) { lv.setUint16(head, 0x1986, true); lv.setUint16(head + 2, pad - 4, true); }
   const cd = new Uint8Array(46 + nb.length), cv = new DataView(cd.buffer);
   cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true); cv.setUint16(14, 0x21, true); cv.setUint32(16, crc, true);
-  cv.setUint32(20, data.length, true); cv.setUint32(24, data.length, true); cv.setUint16(28, nb.length, true); cd.set(nb, 46);
+  cv.setUint32(20, size, true); cv.setUint32(24, size, true); cv.setUint16(28, nb.length, true); cd.set(nb, 46);
   const end = new Uint8Array(22), ev = new DataView(end.buffer);
-  ev.setUint32(0, 0x06054b50, true); ev.setUint16(8, 1, true); ev.setUint16(10, 1, true); ev.setUint32(12, cd.length, true); ev.setUint32(16, lh.length + data.length, true);
-  return new Blob([lh, data, cd, end], { type: 'model/vnd.usdz+zip' });
+  ev.setUint32(0, 0x06054b50, true); ev.setUint16(8, 1, true); ev.setUint16(10, 1, true); ev.setUint32(12, cd.length, true); ev.setUint32(16, lh.length + size, true);
+  return new Blob([lh, ...chunks, cd, end], { type: 'model/vnd.usdz+zip' });
 }
+// escritor ASCII por bloques
+class Out {
+  constructor() { this.chunks = []; this.b = new Uint8Array(1 << 23); this.p = 0; }
+  need(n) { if (this.p + n > this.b.length) { this.chunks.push(this.b.subarray(0, this.p)); this.b = new Uint8Array(Math.max(1 << 23, n)); this.p = 0; } }
+  s(t) { this.need(t.length); for (let i = 0; i < t.length; i++) this.b[this.p++] = t.charCodeAt(i) & 0x7f; }
+  bytes(u) { this.need(u.length); this.b.set(u, this.p); this.p += u.length; }
+  i(n) {
+    this.need(12); const b = this.b;
+    if (n < 0) { b[this.p++] = 45; n = -n; }
+    if (n < 10) { b[this.p++] = 48 + n; return; }
+    const s0 = this.p; while (n > 0) { b[this.p++] = 48 + (n % 10); n = (n / 10) | 0; }
+    for (let a = s0, z = this.p - 1; a < z; a++, z--) { const t = b[a]; b[a] = b[z]; b[z] = t; }
+  }
+  done() { this.chunks.push(this.b.subarray(0, this.p)); return this.chunks; }
+}
+// componentes de normal (int8/127) con dos decimales, precalculados
+const NLUT = (() => { const enc = new TextEncoder(), t = []; for (let n = -128; n < 128; n++) { const v = Math.round(Math.max(-1, n / 127) * 100) / 100; t.push(enc.encode(String(v))); } return t; })();
 export function buildUSDZ(app = S) {
   S = app;
   const f = S.floorY, yMax = Math.min(f + 6, S.cutOn ? S.three.clipPlane.constant : Infinity);
@@ -452,69 +479,94 @@ export function buildUSDZ(app = S) {
     for (let i = 0; i < pos.length; i += 3) { W[i] = lo[0] + pos[i] * sc; W[i + 1] = lo[1] + pos[i + 1] * sc; W[i + 2] = lo[2] + pos[i + 2] * sc; }
     items.push({ D, idx: g.index.array, n, solidN, W, col: D.col, nor: g.attributes.normal.array });
   }
-  const inBand = (W, a, b, c) => { const cy = (W[a * 3 + 1] + W[b * 3 + 1] + W[c * 3 + 1]) / 3; return cy > f - 0.3 && cy < yMax; };
-  const quant = (it, cell) => { const Q = new Int32Array(it.W.length); for (let i = 0; i < Q.length; i++) Q[i] = Math.round(it.W[i] / cell); return Q; };
-  const alive = (Q, a, b, c) => { a *= 3; b *= 3; c *= 3;
-    return !((Q[a] === Q[b] && Q[a + 1] === Q[b + 1] && Q[a + 2] === Q[b + 2]) || (Q[b] === Q[c] && Q[b + 1] === Q[c + 1] && Q[b + 2] === Q[c + 2]) || (Q[a] === Q[c] && Q[a + 1] === Q[c + 1] && Q[a + 2] === Q[c + 2])); };
-  const CELLS = [0.01, 0.02, 0.03, 0.05, 0.08]; let cell = CELLS[0];
-  for (const c of CELLS) {
-    cell = c; let est = 0;
-    for (const it of items) { it.Q = quant(it, c); for (let t = 0; t < it.n; t += 21) { const a = it.idx[t], b = it.idx[t + 1], cc = it.idx[t + 2]; if (inBand(it.W, a, b, cc) && alive(it.Q, a, b, cc)) est += 7; } }
-    if (est < 350000) break;
-  }
+  // dentro de la franja del piso; fuera lo que queda por completo bajo el nivel de piso terminado (no se ve en obra)
+  const keep = (W, a, b, c) => {
+    const ya = W[a * 3 + 1], yb = W[b * 3 + 1], yc = W[c * 3 + 1];
+    if (Math.max(ya, yb, yc) < f - 0.01) return false;
+    const cy = (ya + yb + yc) / 3; return cy > f - 0.3 && cy < yMax;
+  };
+  const op2 = (x) => Math.round(x * 100) / 100;
+  const ghostOp = Math.max(0.05, op2(S.materials.matGhost.opacity)), solidOp = op2(S.opacity);
+  // 1) triángulos por material (color + opacidad), en arreglos tipados
   const groups = new Map(); let total = 0, x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
-  const ghostOp = Math.max(1, Math.round(S.materials.matGhost.opacity * 20)), solidOp = Math.round(S.opacity * 20);
-  for (const it of items) {
-    for (let t = 0; t < it.n; t += 3) {
-      const a = it.idx[t], b = it.idx[t + 1], c = it.idx[t + 2];
-      if (!inBand(it.W, a, b, c) || !alive(it.Q, a, b, c)) continue;
-      const op = t >= it.solidN ? ghostOp : solidOp;
-      const key = it.col[a * 3] + ',' + it.col[a * 3 + 1] + ',' + it.col[a * 3 + 2] + ',' + op;
-      let gr = groups.get(key); if (!gr) { gr = { key, tris: [] }; groups.set(key, gr); }
-      gr.tris.push(it, a, b, c); total++;
-      for (const v of [a, b, c]) { const x = it.W[v * 3], z = it.W[v * 3 + 2]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z; }
+  for (let pass = 0; pass < 2; pass++) {
+    items.forEach((it, ii) => {
+      for (let t = 0; t < it.n; t += 3) {
+        const a = it.idx[t], b = it.idx[t + 1], c = it.idx[t + 2];
+        if (!keep(it.W, a, b, c)) continue;
+        const op = t >= it.solidN ? ghostOp : solidOp;
+        const key = ((it.col[a * 3] << 16) | (it.col[a * 3 + 1] << 8) | it.col[a * 3 + 2]) + '|' + op;
+        let gr = groups.get(key);
+        if (pass === 0) {
+          if (!gr) { gr = { key, op, rgb: [it.col[a * 3], it.col[a * 3 + 1], it.col[a * 3 + 2]], n: 0 }; groups.set(key, gr); }
+          gr.n++; total++;
+          for (const v of [a, b, c]) { const x = it.W[v * 3], z = it.W[v * 3 + 2]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z; }
+        } else {
+          if (!gr.tri) { gr.tri = new Uint32Array(gr.n * 3); gr.src = new Uint8Array(gr.n); gr.k = 0; }
+          const q = gr.k * 3; gr.src[gr.k] = ii; gr.tri[q] = a; gr.tri[q + 1] = b; gr.tri[q + 2] = c; gr.k++;
+        }
+      }
+    });
+    if (pass === 0) {
+      if (!total) throw new Error('No hay elementos visibles para exportar.');
+      if (total > 3500000) throw new Error('Hay ' + total.toLocaleString('es-PE') + ' triángulos visibles: es demasiado para AR Quick Look. Oculta alguna especialidad o activa el corte.');
     }
   }
-  if (!total) throw new Error('No hay elementos visibles para exportar.');
-  if (total > 1200000) throw new Error('Demasiados elementos visibles (' + total + ' triángulos). Oculta especialidades o activa el corte.');
-  const ox = (x0 + x1) / 2, oz = (z0 + z1) / 2, r2 = (v) => Math.round(v * 100) / 100;
-  const lin = (v) => { v /= 255; return Math.round((v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)) * 1000) / 1000; };
-  const out = ['#usda 1.0\n(\n    defaultPrim = "Obra"\n    metersPerUnit = 1\n    upAxis = "Y"\n)\n\ndef Xform "Obra" (\n    kind = "component"\n)\n{\n    def Scope "Materiales"\n    {\n'];
+  const ox = (x0 + x1) / 2, oz = (z0 + z1) / 2;
+  const lin = (v) => { v /= 255; return Math.round((v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)) * 10000) / 10000; };
+  // 2) USDA en milímetros (enteros) bajo un Xform con escala 0,001
+  const o = new Out();
+  o.s('#usda 1.0\n(\n    defaultPrim = "Obra"\n    metersPerUnit = 1\n    upAxis = "Y"\n)\n\ndef Xform "Obra" (\n    kind = "component"\n)\n{\n'
+    + '    double3 xformOp:scale = (0.001, 0.001, 0.001)\n    uniform token[] xformOpOrder = ["xformOp:scale"]\n\n    def Scope "Materiales"\n    {\n');
   const gl = [...groups.values()];
   gl.forEach((g, gi) => {
-    const [r, gg, b, op] = g.key.split(',').map(Number); g.i = gi;
-    out.push('        def Material "M' + gi + '"\n        {\n            token outputs:surface.connect = </Obra/Materiales/M' + gi + '/S.outputs:surface>\n            def Shader "S"\n            {\n'
-      + '                uniform token info:id = "UsdPreviewSurface"\n                color3f inputs:diffuseColor = (' + lin(r) + ', ' + lin(gg) + ', ' + lin(b) + ')\n'
-      + '                float inputs:roughness = 0.85\n                float inputs:metallic = 0\n                float inputs:opacity = ' + (op / 20) + '\n                token outputs:surface\n            }\n        }\n');
+    g.i = gi;
+    o.s('        def Material "M' + gi + '"\n        {\n            token outputs:surface.connect = </Obra/Materiales/M' + gi + '/S.outputs:surface>\n            def Shader "S"\n            {\n'
+      + '                uniform token info:id = "UsdPreviewSurface"\n                color3f inputs:diffuseColor = (' + lin(g.rgb[0]) + ', ' + lin(g.rgb[1]) + ', ' + lin(g.rgb[2]) + ')\n'
+      + '                float inputs:roughness = ' + (g.op < 1 ? 0.9 : 0.82) + '\n                float inputs:metallic = 0\n                float inputs:opacity = ' + g.op + '\n                token outputs:surface\n            }\n        }\n');
   });
-  out.push('    }\n');
+  o.s('    }\n');
+  const MAXV = 9999; let meshes = 0;
+  const local = new Map();
   for (const g of gl) {
-    const pts = [], nrm = [], ind = [], map = new Map(); let nv = 0;
-    for (let k = 0; k < g.tris.length; k += 4) {
-      const it = g.tris[k];
-      for (let j = 1; j <= 3; j++) {
-        const v = g.tris[k + j]; const key = it.D.d + v;
-        let id = map.get(key);
-        if (id === undefined) {
-          id = nv++; map.set(key, id);
-          pts.push('(' + r2(it.Q[v * 3] * cell - ox) + ',' + r2(Math.max(0, it.Q[v * 3 + 1] * cell - f)) + ',' + r2(it.Q[v * 3 + 2] * cell - oz) + ')');
-          nrm.push('(' + r2(it.nor[v * 3] / 127) + ',' + r2(it.nor[v * 3 + 1] / 127) + ',' + r2(it.nor[v * 3 + 2] / 127) + ')');
+    let k = 0;
+    while (k < g.n) {
+      // un trozo con hasta 9 999 vértices: índices de 4 cifras como máximo
+      local.clear(); const verts = []; const ind = [];
+      while (k < g.n && local.size <= MAXV - 3) {
+        const ii = g.src[k];
+        for (let j = 0; j < 3; j++) {
+          const v = g.tri[k * 3 + j], key = ii * 16777216 + v;
+          let id = local.get(key);
+          if (id === undefined) { id = local.size; local.set(key, id); verts.push(ii, v); }
+          ind.push(id);
         }
-        ind.push(id);
+        k++;
       }
+      const nt = ind.length / 3;
+      o.s('\n    def Mesh "G' + g.i + '_' + (meshes++) + '" (\n        prepend apiSchemas = ["MaterialBindingAPI"]\n    )\n    {\n        uniform bool doubleSided = 1\n        int[] faceVertexCounts = [');
+      for (let t = 0; t < nt; t++) o.s(t ? ',3' : '3');
+      o.s(']\n        int[] faceVertexIndices = [');
+      for (let t = 0; t < ind.length; t++) { if (t) o.s(','); o.i(ind[t]); }
+      o.s(']\n        rel material:binding = </Obra/Materiales/M' + g.i + '>\n        normal3f[] normals = [');
+      for (let q = 0; q < verts.length; q += 2) {
+        const it = items[verts[q]], v = verts[q + 1], N = it.nor;
+        o.s(q ? ',(' : '('); o.bytes(NLUT[N[v * 3] + 128]); o.s(','); o.bytes(NLUT[N[v * 3 + 1] + 128]); o.s(','); o.bytes(NLUT[N[v * 3 + 2] + 128]); o.s(')');
+      }
+      o.s('] (\n            interpolation = "vertex"\n        )\n        point3f[] points = [');
+      for (let q = 0; q < verts.length; q += 2) {
+        const W = items[verts[q]].W, v = verts[q + 1];
+        o.s(q ? ',(' : '('); o.i(Math.round((W[v * 3] - ox) * 1000)); o.s(','); o.i(Math.round(Math.max(0, W[v * 3 + 1] - f) * 1000)); o.s(','); o.i(Math.round((W[v * 3 + 2] - oz) * 1000)); o.s(')');
+      }
+      o.s(']\n        uniform token subdivisionScheme = "none"\n    }\n');
     }
-    out.push('\n    def Mesh "G' + g.i + '" (\n        prepend apiSchemas = ["MaterialBindingAPI"]\n    )\n    {\n        uniform bool doubleSided = 1\n'
-      + '        int[] faceVertexCounts = [' + new Array(ind.length / 3).fill('3').join(',') + ']\n        int[] faceVertexIndices = [' + ind.join(',') + ']\n'
-      + '        rel material:binding = </Obra/Materiales/M' + g.i + '>\n        normal3f[] normals = [' + nrm.join(',') + '] (\n            interpolation = "vertex"\n        )\n'
-      + '        point3f[] points = [' + pts.join(',') + ']\n        uniform token subdivisionScheme = "none"\n    }\n');
   }
-  out.push('}\n');
-  const data = new TextEncoder().encode(out.join(''));
-  return { blob: usdzBlob('obra.usda', data), triangles: total, cell, size: [x1 - x0, z1 - z0] };
+  o.s('}\n');
+  return { blob: usdzBlob('obra.usda', o.done()), triangles: total, meshes, size: [x1 - x0, z1 - z0] };
 }
 let qlURL = null;
 async function prepareQuickLook(btn) {
-  btn.disabled = true; const m = $('ar-msg'); m.hidden = false; m.className = 'note'; m.textContent = 'Preparando el modelo para AR…';
+  btn.disabled = true; const m = $('ar-msg'); m.hidden = false; m.className = 'note'; m.textContent = 'Preparando el modelo en calidad completa…';
   await new Promise((r) => setTimeout(r, 50));
   try {
     const res = buildUSDZ(S);
@@ -522,9 +574,9 @@ async function prepareQuickLook(btn) {
     qlURL = URL.createObjectURL(res.blob);
     const a = document.createElement('a'); a.rel = 'ar'; a.href = qlURL + '#allowsContentScaling=0';
     const img = document.createElement('img'); img.alt = 'Abrir en AR'; img.width = 240; img.height = 48;
-    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="240" height="48"><rect width="240" height="48" rx="10" fill="#3d8bfd"/><text x="120" y="30" font-family="system-ui,-apple-system" font-size="17" font-weight="700" fill="#fff" text-anchor="middle">Abrir en AR (1:1)</text></svg>');
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="240" height="48"><rect width="240" height="48" rx="24" fill="#0b0b0b"/><text x="120" y="30" font-family="system-ui,-apple-system" font-size="16" font-weight="600" fill="#fff" text-anchor="middle">Abrir en AR · escala 1:1</text></svg>');
     a.appendChild(img);
-    m.innerHTML = 'Listo: ' + res.triangles.toLocaleString('es-PE') + ' triángulos · ' + (res.blob.size / 1048576).toFixed(1) + ' MB · detalle mínimo ' + Math.round(res.cell * 100) + ' cm. Toca el botón y apunta al piso.<br>';
+    m.innerHTML = 'Listo, con la misma geometría que el visor web: ' + res.triangles.toLocaleString('es-PE') + ' triángulos · ' + (res.blob.size / 1048576).toFixed(0) + ' MB. Toca el botón y apunta al piso; un modelo grande puede tardar unos segundos en abrir.<br>';
     m.appendChild(a);
   } catch (e) { m.className = 'note warn'; m.textContent = e.message; }
   btn.disabled = false;

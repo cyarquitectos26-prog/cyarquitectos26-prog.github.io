@@ -9,7 +9,7 @@ THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
 const $ = (id) => document.getElementById(id);
-const V = '2.0.2';
+const V = '2.1.0';
 const params = new URLSearchParams(location.search);
 const fmt = new Intl.NumberFormat('es-PE', { maximumFractionDigits: 2 });
 const fmtInt = new Intl.NumberFormat('es-PE');
@@ -36,7 +36,7 @@ const METHODS = {
 const S = {
   project: null, schedule: null, tasks: new Map(), disc: new Map(), elems: [], byUid: new Map(),
   cut: null, colorMode: params.get('color') || '4d', pending: params.get('pend') || 'ghost',
-  opacity: 1, xray: false, cutOn: false, cutT: 0.62, ceilings: false, upper: false, edges: !matchMedia('(pointer:coarse)').matches,
+  opacity: 1, xray: false, cutOn: false, cutT: 0.62, ceilings: false, upper: false, edges: params.get('aristas') !== '0',
   filter: { cat: '', sys: '', link: '' }, hidden: new Set(), isolate: null, selected: null, taskSel: null,
   mode: 'orbit', bounds: new THREE.Box3(), floorY: 65, listeners: {},
 };
