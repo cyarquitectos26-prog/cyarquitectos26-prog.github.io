@@ -64,6 +64,7 @@ export async function openMapEditor(S) {
     L.control.layers({ 'Satélite': sat, 'Calles': osm }, { 'Nombres': lab }, { position: 'topright' }).addTo(map);
     L.control.scale({ imperial: false }).addTo(map);
     map.on('click', (ev) => { if (!g) { g = { lat: ev.latlng.lat, lon: ev.latlng.lng, rot: 0 }; draw(S, true); } });
+    S.__map = map;
   }
   setTimeout(() => map.invalidateSize(), 60);
   if (g) { map.setView([g.lat, g.lon], 19); }
@@ -130,7 +131,7 @@ function draw(S, center) {
     g.rot = ((deg(Math.atan2(v.e, v.n)) % 360) + 360) % 360; redrawSoon(S, true);
   });
   rotM.on('dragend', () => draw(S, false));
-  if (center) map.panTo([g.lat, g.lon]);
+  if (center) map.setView([g.lat, g.lon], Math.max(map.getZoom(), 18));
   if (draw.sync) draw.sync();
 }
 let pend = 0;
@@ -144,6 +145,8 @@ function redrawSoon(S, keepRot) {
       const ll = o.pts.map(([x, z]) => { const p = modelToLatLon(S, x, z, g); return [p.lat, p.lon]; });
       L.polygon(ll, o.kind === 'box' ? { color: '#3d8bfd', weight: 3, fillColor: '#3d8bfd', fillOpacity: 0.12, interactive: false } : { color: '#fff', weight: 1.2, fillOpacity: 0.05, interactive: false }).addTo(layer);
     }
+    { const a = anchorOf(S), b = S.bounds; const reach = Math.max(b.max.x - b.min.x, b.max.z - b.min.z) * 0.6; const n = modelToLatLon(S, a.x, a.z - reach, g);
+      L.polyline([[g.lat, g.lon], [n.lat, n.lon]], { color: '#fff', weight: 2, dashArray: '6 6', interactive: false }).addTo(layer); }
     if (!keepRot && rotM) {
       const a = anchorOf(S), b = S.bounds; const reach = Math.max(b.max.x - b.min.x, b.max.z - b.min.z) * 0.6;
       const n = modelToLatLon(S, a.x, a.z - reach, g); rotM.setLatLng([n.lat, n.lon]);
