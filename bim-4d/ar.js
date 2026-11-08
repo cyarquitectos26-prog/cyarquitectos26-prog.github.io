@@ -1,7 +1,7 @@
 // AR en obra: WebXR (Android/ARCore) con colocación por geolocalización + brújula, ajuste fino y controles;
 // iPhone/iPad: AR Quick Look (USDZ generado con lo que se ve, escala fija 1:1).
-import { anchorOf, latLonToENU, enuToLatLon, earthUrl } from './geo.js?v=2.0.0';
-import { STATES } from './app.js?v=2.0.0';
+import { anchorOf, latLonToENU, enuToLatLon, earthUrl } from './geo.js?v=2.0.1';
+import { STATES } from './app.js?v=2.0.1';
 
 const $ = (id) => document.getElementById(id);
 const rad = (d) => d * Math.PI / 180, deg = (r) => r * 180 / Math.PI;
@@ -42,7 +42,7 @@ export async function openAR(app) {
   body.innerHTML = html;
   foot.innerHTML = '';
   const mk = (txt, cls, fn) => { const b = document.createElement('button'); b.textContent = txt; if (cls) b.className = cls; b.onclick = fn; foot.appendChild(b); return b; };
-  mk('Ubicar en el mapa', '', async () => { dlg.close(); const m = await import('./geo.js?v=2.0.0'); m.openMapEditor(S); });
+  mk('Ubicar en el mapa', '', async () => { dlg.close(); const m = await import('./geo.js?v=2.0.1'); m.openMapEditor(S); });
   if (xrOk) mk('Iniciar AR', 'primary', () => startXR());
   else if (isIOS || quickLook) { const b = mk('Preparar modelo', 'primary', () => prepareQuickLook(b)); }
   else mk('Mostrar QR', 'primary', () => { dlg.close(); $('btn-share').click(); });
